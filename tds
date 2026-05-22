@@ -92,19 +92,76 @@ case "$COMMAND" in
         docker pull --platform linux/amd64 "$IMAGE"
         ;;
 
+    init)
+        # Initialise the current directory as a TDS working repository.
+        # Does NOT require Docker — uses only curl and standard shell tools.
+        REPO_ROOT="https://raw.githubusercontent.com/ibaldin/tds/main"
+        INIT_FILES=("TDS_REGISTRY.md" "TDS_TEMPLATE.md" "TDS_WORKFLOW.md")
+
+        echo "This will initialise the following directory as a TDS repository:"
+        echo ""
+        echo "  $(pwd)"
+        echo ""
+        printf "Continue? [y/N] "
+        read -r _answer </dev/tty
+        case "$_answer" in
+            [yY]|[yY][eE][sS]) ;;
+            *) echo "Aborted."; exit 0 ;;
+        esac
+
+        # Create diagrams/ subdirectory (idempotent)
+        mkdir -p diagrams
+        echo "  ✓ diagrams/ ready"
+
+        # Download template files from the GitHub repo
+        if ! command -v curl &>/dev/null; then
+            echo "Error: curl is required for 'tds init' but was not found on PATH." >&2
+            exit 1
+        fi
+
+        echo ""
+        for _f in "${INIT_FILES[@]}"; do
+            if [[ -e "$_f" ]]; then
+                echo "  • $_f already exists — skipping (delete it first to re-download)"
+            else
+                printf "  Downloading %-24s" "$_f ..."
+                if curl -fsSL "$REPO_ROOT/$_f" -o "$_f"; then
+                    echo " done"
+                else
+                    echo " FAILED" >&2
+                    echo "Error: could not download $_f from $REPO_ROOT" >&2
+                    exit 1
+                fi
+            fi
+        done
+
+        echo ""
+        echo "Repository ready. Suggested next steps:"
+        echo "  1. Edit TDS_REGISTRY.md  — assign a document ID for your first TDS"
+        echo "  2. Copy TDS_TEMPLATE.md  — e.g. cp TDS_TEMPLATE.md HPDF_TDS_0001_myservice.md"
+        echo "  3. Fill in the template and run: tds render HPDF_TDS_0001_myservice.md"
+        ;;
+
     help|--help|-h|"")
         cat <<'EOF'
 tds — HPDF TDS document converter
 
 USAGE
+  tds init                             Initialise current directory as a TDS repo
   tds render   <file.md>   [options]   Convert Markdown → DOCX
   tds unrender <file.docx> [options]   Convert reviewed DOCX → Markdown
   tds pull                             Pull / update the Docker image
   tds help                             Show this message
 
+GETTING STARTED
+  mkdir my-tds && cd my-tds
+  tds init          # downloads templates and creates diagrams/
+  tds pull          # pulls the Docker image (one-time)
+
 REQUIREMENTS
   Docker Desktop, Colima, or any Docker-compatible runtime.
   Run `tds pull` once to download the image before first use.
+  `tds init` only requires curl — no Docker needed.
 
 HOW IT WORKS
   Run tds from your TDS working directory. The current directory is
