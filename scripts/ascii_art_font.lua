@@ -1,9 +1,13 @@
 --[[
 ascii_art_font.lua — Pandoc Lua filter for HPDF TDS rendering
 
-Applies a smaller monospace font to untagged code blocks (ASCII art).
-Code blocks with a language tag (```bash, ```json, ```mermaid, etc.) are
+Applies a smaller monospace font to ```text code blocks (ASCII art).
+All other code blocks (```bash, ```json, ```mermaid, untagged, etc.) are
 left untouched — they are handled by Word's default Source Code style.
+
+Use ```text (not an untagged block) for ASCII art diagrams in TDS documents.
+This explicit tag makes intent clear to authors and tools, and ensures the
+DOCX → MD round-trip can reliably recover the code block.
 
 Font size is controlled via pandoc metadata key 'ascii-art-font-pt':
   pandoc ... --metadata ascii-art-font-pt=9
@@ -35,9 +39,9 @@ local function xml_escape(s)
 end
 
 local function render_code_block(el)
-    -- Only process untagged blocks — language-tagged blocks are ASCII art's peers
-    -- but get their own Word style; we leave those alone.
-    if #el.classes > 0 then
+    -- Only process ```text blocks — these are the HPDF convention for ASCII art.
+    -- All other blocks (untagged, or with any other language tag) are left alone.
+    if el.classes[1] ~= 'text' then
         return nil   -- no change
     end
 
@@ -57,6 +61,7 @@ local function render_code_block(el)
         local xml = string.format(
             "<w:p>"
             .. "<w:pPr>"
+            ..   "<w:pStyle w:val='SourceCode'/>"
             ..   "<w:spacing w:before='0' w:after='0'/>"
             .. "</w:pPr>"
             .. "<w:r>"

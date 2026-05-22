@@ -34,7 +34,7 @@ numbersections: false   # set to true to add pandoc section numbers to the DOCX
      • Move resolved open questions from §6 to Decision Records (§7).
      • §6 Open Questions must be empty before status → APPROVED.
      • Diagrams: three options are supported — see TDS_WORKFLOW.md §6.2 for full guidance.
-       - Option A: ASCII art (fenced code block, no language tag) — simple flows only.
+       - Option A: ASCII art (```text fenced block) — simple flows only.
        - Option B: Mermaid (```mermaid block) — renders in GitHub/GitLab; pre-render to
          PNG with mmdc before pandoc export. Keep .mmd source files alongside the TDS.
        - Option C: Engineer-authored PNG — store in diagrams/HPDF_TDS_NNNN_name.png
@@ -98,7 +98,7 @@ numbersections: false   # set to true to add pandoc section numbers to the DOCX
      Choose a diagram format based on complexity (see TDS_WORKFLOW.md §6.2):
        - Simple flow → Mermaid (edit below; pre-render to PNG before DOCX export)
        - Complex architecture → replace with: ![Caption](diagrams/HPDF_TDS_XXXX_overview.png)
-       - Quick inline sketch → ASCII art fenced code block
+       - Quick inline sketch → ASCII art in a ```text fenced block
      If using Mermaid, keep the .mmd source file alongside this document. -->
 
 ```mermaid

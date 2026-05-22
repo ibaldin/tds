@@ -127,11 +127,11 @@ Neque porro quisquam est, qui dolorem ipsum quia dolor sit amet. Once a physical
 ### 4.1 Threat Model
 
 <!-- Using ASCII art (Option A) to illustrate the trust boundary — simple enough
-     for a fenced code block; no external tooling required. -->
+     for a ```text fenced block; no external tooling required. -->
 
 The primary trust boundary lies between the public ESnet-facing API and the Hub-internal network:
 
-```
+```text
 [ Spoke Client ] ──(ESnet, TLS 1.3)──► [ LIS API Gateway ] ──(internal)──► [ Catalog / Storage ]
        │                                        │
   untrusted zone                         trust boundary

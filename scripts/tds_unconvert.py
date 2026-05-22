@@ -39,6 +39,7 @@ import tempfile
 from pathlib import Path
 
 from docx import Document
+from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
 
 # Auto-apply heading style fix (works on old and new DOCXes alike)
@@ -172,6 +173,82 @@ def strip_cover_and_toc(docx_path: Path) -> Path:
         body.remove(elem)
 
     tmp = Path(tempfile.mktemp(suffix='_stripped.docx'))
+    doc.save(str(tmp))
+    return tmp
+
+
+# ── ASCII-art block reassembly ─────────────────────────────────────────────────
+
+def _is_ascii_art_para(elem) -> bool:
+    """
+    Return True if *elem* looks like a paragraph emitted by ascii_art_font.lua:
+      • at least one run font set to Courier New (required in all cases)
+      • AND one of:
+          - no explicit paragraph style / Normal (old Lua filter: no pStyle emitted)
+          - pStyle "Source Code" (new Lua filter: pStyle added but style undefined
+            in the DOCX, so pandoc's style lookup silently fails)
+
+    Both cases need intervention before pandoc can round-trip them as code blocks.
+    """
+    tag = elem.tag.split('}')[-1] if '}' in elem.tag else elem.tag
+    if tag != 'p':
+        return False
+    # Require Courier New on at least one run
+    fonts = elem.findall('.//' + qn('w:rFonts'))
+    has_courier = any(
+        f.get(qn('w:ascii'), '').lower() == 'courier new'
+        for f in fonts
+    )
+    if not has_courier:
+        return False
+    # Accept: no pStyle, Normal, or "Source Code" (with or without definition)
+    ps = elem.find('.//' + qn('w:pStyle'))
+    if ps is None:
+        return True
+    return ps.get(qn('w:val'), '').lower() in ('', 'normal', 'source code', 'sourcecode')
+
+
+def reassemble_ascii_art_blocks(docx_path: Path) -> Path:
+    """
+    Prepare ASCII-art code-block paragraphs for pandoc round-trip:
+
+    1. Ensure every matching paragraph has <w:pStyle w:val="Source Code"/>.
+       Old Lua filter output has no pStyle; new output already has it but the
+       style is not defined in the DOCX, so pandoc's lookup silently fails.
+
+    2. Inject a minimal "Source Code" style definition into the DOCX styles
+       part so pandoc can resolve the pStyle ID to the name "Source Code" and
+       emit a fenced code block.
+
+    Returns the path to a new temporary DOCX, or the original path unchanged
+    if no matching paragraphs were found.
+    """
+    doc  = Document(str(docx_path))
+    body = doc.element.body
+
+    # ── Step 1: ensure every ASCII-art paragraph has the right pStyle ─────────
+    changed = 0
+    for child in body:
+        if not _is_ascii_art_para(child):
+            continue
+        pPr = child.find(qn('w:pPr'))
+        if pPr is None:
+            pPr = OxmlElement('w:pPr')
+            child.insert(0, pPr)
+        pStyle = pPr.find(qn('w:pStyle'))
+        if pStyle is None:
+            pStyle = OxmlElement('w:pStyle')
+            pPr.insert(0, pStyle)
+        pStyle.set(qn('w:val'), 'SourceCode')
+        changed += 1
+
+    if changed == 0:
+        return docx_path   # nothing to do — return original path unchanged
+
+    # No style definition injection needed: pandoc 2.9.x recognises the
+    # 'SourceCode' styleId as a code block directly, without a definition.
+
+    tmp = Path(tempfile.mktemp(suffix='_ascii_fixed.docx'))
     doc.save(str(tmp))
     return tmp
 
@@ -340,6 +417,84 @@ def _strip_pandoc_image_attrs(md: str, alt_to_path: dict | None = None) -> str:
     return md
 
 
+def _indented_to_fenced_code_blocks(md: str) -> str:
+    """
+    Convert Markdown indented code blocks (≥4-space prefix) to ```text fenced
+    blocks.  Pandoc 2.9.x emits indented-style blocks for 'SourceCode'-styled
+    DOCX paragraphs; the HPDF convention is ```text fenced blocks so the
+    ascii_art_font.lua filter applies the correct font on the next render.
+
+    Detection rule: a line starting with ≥4 spaces, preceded by a blank line
+    (or document start), begins a candidate block.  The candidate is only
+    converted if it contains NO list-item lines (numbered or bulleted) — those
+    are indented list continuations that must be left alone.  Exactly 4 leading
+    spaces are stripped from each content line.
+    """
+    # Matches indented list items: "    1. ", "    - ", "    * ", "    + "
+    _list_item = re.compile(r'    (\d+[.)]\s|\s*[-*+]\s)')
+
+    lines = md.split('\n')
+    out   = []
+    i     = 0
+
+    while i < len(lines):
+        # Candidate: ≥4-space line after a blank line (or document start)
+        if lines[i].startswith('    ') and (not out or out[-1].strip() == ''):
+            # Collect all lines belonging to this candidate block
+            candidate = []
+            j = i
+            while j < len(lines):
+                if lines[j].startswith('    '):
+                    candidate.append(lines[j])
+                    j += 1
+                elif lines[j] == '' and j + 1 < len(lines) and lines[j + 1].startswith('    '):
+                    candidate.append(lines[j])   # blank line within block
+                    j += 1
+                else:
+                    break
+
+            # Skip if any line looks like a list item — it's a list continuation
+            if any(_list_item.match(l) for l in candidate if l):
+                out.append(lines[i])
+                i += 1
+                continue
+
+            # Genuine code block: strip 4-space indent and wrap in fences
+            block = [l[4:] if l else '' for l in candidate]
+            while block and block[-1] == '':
+                block.pop()
+            if block:
+                out.append('```text')
+                out.extend(block)
+                out.append('```')
+                i = j
+                continue
+
+        out.append(lines[i])
+        i += 1
+
+    return '\n'.join(out)
+
+
+def _merge_consecutive_code_blocks(md: str) -> str:
+    """
+    Merge consecutive untagged fenced code blocks into one.
+
+    When pandoc reads back a DOCX where each line of an ASCII-art block is a
+    separate 'Source Code' paragraph, it may emit one ``` ... ``` block per
+    line.  This pass collapses adjacent untagged blocks (separated by at most
+    one blank line) back into a single block, restoring the original structure.
+
+    Applied repeatedly until stable so runs of 3+ blocks are fully merged.
+    """
+    prev = None
+    while prev != md:
+        prev = md
+        # ``` (close)  +  0-or-more blank lines  +  ``` (open, no language tag)
+        md = re.sub(r'\n```\n\n*```\n', '\n', md)
+    return md
+
+
 def _clean_markdown(md: str, alt_to_path: dict | None = None) -> str:
     """Apply all post-pandoc cleanup passes."""
     md = _setext_to_atx(md)
@@ -349,6 +504,8 @@ def _clean_markdown(md: str, alt_to_path: dict | None = None) -> str:
     md = _unescape_markdown(md)
     md = _fix_dashes(md)
     md = _strip_pandoc_image_attrs(md, alt_to_path=alt_to_path)
+    md = _indented_to_fenced_code_blocks(md)
+    md = _merge_consecutive_code_blocks(md)
     # Remove trailing whitespace on every line
     md = '\n'.join(line.rstrip() for line in md.splitlines())
     # Collapse 3+ consecutive blank lines to 2
@@ -478,6 +635,17 @@ def main():
     if work_input != input_path:
         work_input.unlink(missing_ok=True)
     print("ok")
+
+    # ── Step 2b: reassemble ASCII-art code blocks ─────────────────────────────
+    # ascii_art_font.lua renders untagged code blocks as raw Courier New
+    # paragraphs (one per line, no paragraph style).  Pandoc cannot identify
+    # these as code on the return trip; we restyle them as 'Source Code' here
+    # so pandoc converts them back to fenced blocks.
+    fixed_docx = reassemble_ascii_art_blocks(stripped_docx)
+    if fixed_docx != stripped_docx:
+        stripped_docx.unlink(missing_ok=True)
+        stripped_docx = fixed_docx
+        print("ASCII art blocks restyled for round-trip.")
 
     # ── Step 3: pandoc DOCX → Markdown ───────────────────────────────────────
     print("Running pandoc … ", end='', flush=True)
