@@ -1,0 +1,143 @@
+#!/usr/bin/env bash
+# tds — HPDF TDS document converter
+#
+# Wraps tds_render.py and tds_unconvert.py inside a Docker container,
+# volume-mounting the current directory so all relative file paths
+# (diagrams/, .mmd sidecars, referenced PNGs) work exactly as they do
+# when running the scripts locally.
+#
+# INSTALLATION
+#   Copy this file to a directory on your PATH and make it executable:
+#     cp tds /usr/local/bin/tds && chmod +x /usr/local/bin/tds
+#   Or just run it in-place:
+#     chmod +x tds && ./tds help
+#
+# REQUIREMENTS
+#   Docker Desktop, Colima, or any Docker-compatible runtime.
+#   No other local dependencies needed — everything else is in the image.
+#
+# USAGE
+#   cd /path/to/your/tds/working/directory
+#   tds render   HPDF_TDS_0001_example.md
+#   tds unrender HPDF_TDS_0001_example.docx
+
+set -euo pipefail
+
+IMAGE="${TDS_IMAGE:-ibaldin/tds:latest}"
+COMMAND="${1:-help}"
+
+# ── Helpers ────────────────────────────────────────────────────────────────────
+
+_check_docker() {
+    if ! command -v docker &>/dev/null; then
+        echo "Error: Docker is not installed or not on PATH." >&2
+        echo "Install Docker Desktop: https://www.docker.com/products/docker-desktop/" >&2
+        exit 1
+    fi
+    if ! docker info &>/dev/null 2>&1; then
+        echo "Error: Docker daemon is not running." >&2
+        echo "Start Docker Desktop (or Colima) and try again." >&2
+        exit 1
+    fi
+}
+
+_ensure_image() {
+    if ! docker image inspect "$IMAGE" &>/dev/null 2>&1; then
+        echo "Image '$IMAGE' not found locally — pulling from Docker Hub ..."
+        docker pull "$IMAGE"
+    fi
+}
+
+_run() {
+    # --rm           : remove the container after it exits
+    # --user         : run as the calling user so output files are not owned by root
+    # -e HOME=/tmp   : give Chromium/Puppeteer a writable home dir inside the container
+    # -v $(pwd):/workspace : mount the current directory as the working directory
+    # -w /workspace  : set container CWD to the mount point
+    docker run --rm \
+        --user "$(id -u):$(id -g)" \
+        -e HOME=/tmp \
+        -v "$(pwd):/workspace" \
+        -w /workspace \
+        "$IMAGE" \
+        "$@"
+}
+
+# ── Commands ───────────────────────────────────────────────────────────────────
+
+case "$COMMAND" in
+
+    render)
+        # Convert a TDS Markdown file to a styled DOCX with cover page.
+        # All options are passed through to tds_render.py.
+        _check_docker
+        _ensure_image
+        shift
+        _run python3 /app/scripts/tds_render.py "$@"
+        ;;
+
+    unrender)
+        # Convert a reviewed DOCX back to Markdown, restoring Mermaid blocks
+        # and YAML frontmatter from the original .md in the same directory.
+        # All options are passed through to tds_unconvert.py.
+        _check_docker
+        _ensure_image
+        shift
+        _run python3 /app/scripts/tds_unconvert.py "$@"
+        ;;
+
+    pull)
+        # Pull (or update) the Docker image from Docker Hub.
+        _check_docker
+        docker pull --platform linux/amd64 "$IMAGE"
+        ;;
+
+    help|--help|-h|"")
+        cat <<'EOF'
+tds — HPDF TDS document converter
+
+USAGE
+  tds render   <file.md>   [options]   Convert Markdown → DOCX
+  tds unrender <file.docx> [options]   Convert reviewed DOCX → Markdown
+  tds pull                             Pull / update the Docker image
+  tds help                             Show this message
+
+REQUIREMENTS
+  Docker Desktop, Colima, or any Docker-compatible runtime.
+  Run `tds pull` once to download the image before first use.
+
+HOW IT WORKS
+  Run tds from your TDS working directory. The current directory is
+  volume-mounted into the container at /workspace, so all relative paths
+  resolve naturally — diagrams/, .mmd sidecars, referenced PNGs, and the
+  output DOCX or MD file all appear alongside your source files as expected.
+
+EXAMPLES
+  cd ~/hpdf/TDS-0001
+  tds render HPDF_TDS_0001_example.md
+  tds unrender HPDF_TDS_0001_example.docx
+
+  # Unrender when the original .md has a different stem than the DOCX:
+  tds unrender reviewed_copy.docx --original HPDF_TDS_0001_example.md
+
+  # Render without the cover page (faster, good for quick review):
+  tds render HPDF_TDS_0001_example.md --no-cover
+
+  # See all options for each subcommand:
+  tds render --help
+  tds unrender --help
+
+CONFIGURATION
+  Override the Docker image with the TDS_IMAGE environment variable:
+    TDS_IMAGE=hpdf/tds-tools:1.0 tds render HPDF_TDS_0001_example.md
+
+EOF
+        ;;
+
+    *)
+        echo "Error: unknown command '$COMMAND'" >&2
+        echo "Run 'tds help' for usage." >&2
+        exit 1
+        ;;
+
+esac
