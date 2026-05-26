@@ -2,23 +2,14 @@
 # ─── Document Identity ────────────────────────────────────────────────────────
 doc_id: "HPDF_TDS_0001"
 title: "Example Component: Lorem Ipsum Service"
-subtitle: "Technical Design Specification"
 version: "0.1"
 status: "DRAFT"                    # DRAFT | REVIEW | APPROVED | SUPERSEDED | DEPRECATED
-
-# ─── Ownership ────────────────────────────────────────────────────────────────
-owner: "I. Baldin, JLab"
-contributors:
-  - "J. Smith, LBNL"
-  - "A. Doe, JLab"
-reviewers:
-  - "B. Jones, LBNL"
-  - "C. Lee, JLab"
-
-# ─── Dates ────────────────────────────────────────────────────────────────────
+owner: "I. Baldin"                  # Single engineer responsible for this
+contributors:                      # List of contributors
+  - "J. Smith"
+  - "A. Doe"
 created: "2026-05-21"
 last_updated: "2026-05-21"
-target_review_date: "2026-06-15"
 
 # ─── Pandoc rendering hints ───────────────────────────────────────────────────
 # Render to DOCX (use scripts/tds_render.py — it handles Mermaid pre-rendering):
@@ -34,9 +25,11 @@ numbersections: false   # set to true to add pandoc section numbers to the DOCX
 | Field | Value |
 |---|---|
 | **Document ID** | HPDF_TDS_0001 |
+| **Title** | Example Component: Lorem Ipsum Service |
 | **Version** | 0.1 |
 | **Status** | DRAFT |
-| **Owner** | I. Baldin, JLab |
+| **Owner** | I. Baldin |
+| **Created** | 2026-05-21 |
 | **Last Updated** | 2026-05-21 |
 
 ---
@@ -78,8 +71,8 @@ The problem is the absence of a stable, topology-independent addressing layer be
 
 ### 3.1 Overview
 
-<!-- Using Mermaid (Option B). The .mmd source is stored alongside this file as
-     HPDF_TDS_0001_overview.mmd. Pre-render with mmdc before DOCX export. -->
+<!-- Using Mermaid (Option B). tds render auto-renders this block to PNG and saves
+     the source as diagrams/mmdc-example-01.mmd. tds unrender restores it. -->
 
 At rest, lorem ipsum dolor sit amet components reside at the Hub and expose a single stable API endpoint. Spoke-side clients interact exclusively with this endpoint; Hub-internal storage topology is hidden. The service resolves incoming requests against the Data Catalog, selects the appropriate storage backend, and streams or redirects data to the client.
 
@@ -100,6 +93,33 @@ graph TD
     end
     CLA -->|"ESnet"| LIS
     CLB -->|"ESnet"| LIS
+```
+
+The sequence diagram below shows the internal request flow through the three broker components for a successful data retrieval:
+
+```mermaid
+sequenceDiagram
+    participant C as Spoke Client
+    participant B as Request Broker
+    participant R as Catalog Resolver
+    participant S as Storage Redirector
+
+    C->>B: GET /data/{identifier} (Bearer token)
+    B->>B: Validate OIDC token
+    B->>R: resolve(identifier)
+    R->>R: Check local cache (TTL 60s)
+    alt Cache hit
+        R-->>B: storage_location
+    else Cache miss
+        R->>R: Catalog API call
+        R-->>B: storage_location (cached)
+    end
+    B->>S: redirect_or_proxy(storage_location, client_caps)
+    alt Client supports redirects
+        S-->>C: 307 Redirect → presigned storage URL
+    else Proxy mode
+        S-->>C: 200 data stream
+    end
 ```
 
 ### 3.2 Component Discussion
@@ -160,6 +180,32 @@ Authorization is attribute-based: the Data Catalog record for each artifact carr
 Lorem ipsum dolor sit amet, consectetur adipiscing elit. The Lorem Ipsum Service is deployed as a containerized workload at both Hub sites (JLab and LBNL) for geographic resilience. Each site runs at least two Request Broker replicas behind a site-local load balancer. The two Hub sites operate independently; there is no active cross-site state synchronization.
 
 Spoke sites do not run any component of this service; they interact solely via the Hub API endpoint.
+
+The deployment topology across Hub sites and connected Spokes is shown below:
+
+```mermaid
+graph LR
+    subgraph JLab ["JLab Hub"]
+        LB_J["Load Balancer"]
+        B1["Broker replica 1"]
+        B2["Broker replica 2"]
+        LB_J --> B1
+        LB_J --> B2
+    end
+    subgraph LBNL ["LBNL Hub"]
+        LB_L["Load Balancer"]
+        B3["Broker replica 1"]
+        B4["Broker replica 2"]
+        LB_L --> B3
+        LB_L --> B4
+    end
+    DNS["DNS Failover"]
+    DNS -->|"primary"| LB_J
+    DNS -->|"failover (TTL 30s)"| LB_L
+    ALCF["ALCF Spoke"] -->|"ESnet"| DNS
+    OLCF["OLCF Spoke"] -->|"ESnet"| DNS
+    NERSC["NERSC Spoke"] -->|"ESnet"| DNS
+```
 
 ### 5.2 Configuration Management
 

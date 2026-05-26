@@ -2,23 +2,18 @@
 # ─── Document Identity ────────────────────────────────────────────────────────
 doc_id: "HPDF_TDS_XXXX"           # Assigned from the TDS registry (see TDS_WORKFLOW.md)
 title: "<Component or Feature Name>"
-subtitle: "Technical Design Specification"
 version: "0.1"
 status: "DRAFT"                    # DRAFT | REVIEW | APPROVED | SUPERSEDED | DEPRECATED
-
-# ─── Ownership ────────────────────────────────────────────────────────────────
-owner: "<Name, Institution>"       # Single engineer responsible for this document
-contributors: []                   # List of contributors: "Name, Institution"
-reviewers: []                      # Engineers who must approve before APPROVED status
-
-# ─── Dates ────────────────────────────────────────────────────────────────────
+owner: "<Name>"                    # Single engineer responsible for this
+contributors: []                   # List of contributors                   
 created: "YYYY-MM-DD"
 last_updated: "YYYY-MM-DD"
-target_review_date: "YYYY-MM-DD"
 
 # ─── Pandoc rendering hints ───────────────────────────────────────────────────
-# Render to DOCX (use scripts/tds_render.py — it handles Mermaid pre-rendering):
-#   python3 scripts/tds_render.py HPDF_TDS_XXXX_<slug>.md [--reference-doc hpdf-reference.docx]
+# Render to DOCX (use the tds wrapper — handles Mermaid, cover page, and pandoc):
+#   tds render HPDF_TDS_XXXX_<slug>.md
+# Convert reviewed DOCX back to Markdown:
+#   tds unrender HPDF_TDS_XXXX_<slug>.docx
 # Section numbering is controlled by the numbersections field below.
 # See TDS_WORKFLOW.md §6 for full rendering instructions.
 toc: true
@@ -35,8 +30,8 @@ numbersections: false   # set to true to add pandoc section numbers to the DOCX
      • §6 Open Questions must be empty before status → APPROVED.
      • Diagrams: three options are supported — see TDS_WORKFLOW.md §6.2 for full guidance.
        - Option A: ASCII art (```text fenced block) — simple flows only.
-       - Option B: Mermaid (```mermaid block) — renders in GitHub/GitLab; pre-render to
-         PNG with mmdc before pandoc export. Keep .mmd source files alongside the TDS.
+       - Option B: Mermaid (```mermaid block) — renders in GitHub/GitLab; tds render
+         converts to PNG and saves .mmd sidecars in diagrams/ automatically.
        - Option C: Engineer-authored PNG — store in diagrams/HPDF_TDS_NNNN_name.png
          and reference with ![Caption](diagrams/...). Pandoc embeds natively.
      • Remove this instruction block before publishing the document.
@@ -47,9 +42,11 @@ numbersections: false   # set to true to add pandoc section numbers to the DOCX
 | Field | Value |
 |---|---|
 | **Document ID** | HPDF_TDS_XXXX |
+| **Title** | \<Title\> |
 | **Version** | 0.1 |
 | **Status** | DRAFT |
-| **Owner** | \<Name, Institution\> |
+| **Owner** | \<Name \> |
+| **Created** | YYYY-MM-DD |
 | **Last Updated** | YYYY-MM-DD |
 
 ---

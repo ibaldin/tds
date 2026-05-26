@@ -51,6 +51,20 @@ except ImportError:
     _HEADING_FIX_AVAILABLE = False
 
 
+# ── Filename helpers ───────────────────────────────────────────────────────────
+
+def slug_from_filename(filepath):
+    """
+    Derive the slug from the TDS filename.
+    e.g. 'HPDF_TDS_0001_example.md'  -> 'example'
+         'HPDF_TDS_0042_transfer-engine.docx' -> 'transfer-engine'
+    Falls back to the full stem if the expected prefix pattern is absent.
+    """
+    stem = Path(filepath).stem
+    m = re.match(r'^HPDF_TDS_\d{4}_(.+)$', stem)
+    return m.group(1) if m else stem
+
+
 # ── DOCX stripping ─────────────────────────────────────────────────────────────
 
 def _style_val(para_elem):
@@ -299,7 +313,17 @@ def _unescape_markdown(md: str) -> str:
 
     Pandoc adds these to prevent accidental interpretation, but our
     source files already use them unescaped in prose and heading text.
+
+    Also normalises Unicode whitespace variants that Word/pandoc introduce
+    mid-line (non-breaking space U+00A0, narrow no-break space U+202F, thin
+    space U+2009) to ordinary ASCII spaces.  These are invisible in editors
+    and survive rstrip(), causing spurious diff lines.
     """
+    # Unicode whitespace → ordinary space (must come first so later subs see
+    # clean ASCII text)
+    md = md.replace(' ', ' ')   # non-breaking space
+    md = md.replace(' ', ' ')   # narrow no-break space
+    md = md.replace(' ', ' ')   # thin space
     # \_ inside inline text → _   (e.g. HPDF\_TDS\_0001 → HPDF_TDS_0001)
     md = re.sub(r'(?<!\\)\\_', '_', md)
     # \[ and \] in inline text → [ and ]
@@ -350,11 +374,16 @@ def _fix_dashes(md: str) -> str:
     return '\n'.join(result)
 
 
-# Figure image reference pattern produced by tds_render.py:
-#   ![Figure N](diagrams/HPDF_TDS_<num>_<slug>_fig_NN.png)
-_FIG_REF = re.compile(
-    r'!\[Figure (\d+)\]\(diagrams/([^)]+\.png)\)'
-)
+# Figure reference produced by tds_render.py and then embedded in DOCX.
+# After a pandoc DOCX→MD round-trip, pandoc extracts the embedded image and
+# emits a media/ path; the alt text "Figure N" is preserved.  We match both
+# the original diagrams/ form (shouldn't occur in practice) and the media/
+# form so restoration works regardless of how the file was obtained.
+#   pandoc output:  ![Figure N](media/rIdXX.png){width=… height=…}
+#   original form:  ![Figure N](diagrams/mmdc-<slug>-NN.png)
+# Note: {width=…} attributes are stripped by _strip_pandoc_image_attrs before
+# restore_mermaid runs, so we don't need to match them here.
+_FIG_REF = re.compile(r'!\[Figure (\d+)\]\([^)]+\)')
 
 # Pattern pandoc emits for embedded images extracted from DOCX:
 #   ![alt text](media/rIdXX.png){width=… height=…}
@@ -495,6 +524,87 @@ def _merge_consecutive_code_blocks(md: str) -> str:
     return md
 
 
+# Patterns used by _collapse_loose_lists
+_LIST_ITEM_RE  = re.compile(r'^\s*(?:[-*+]|\d+[.)]) ')
+_LOOSE_BULLET  = re.compile(r'^(\s*)([-*+])\s{2,}')
+_LOOSE_ORDERED = re.compile(r'^(\s*)(\d+[.)])\s{2,}')
+
+
+def _tighten_list_item(line: str) -> str:
+    """
+    Normalize pandoc's loose-list marker padding on a single list-item line:
+      -   item   →  - item
+      1.  item   →  1. item
+    Also halves per-level indentation when it is an exact multiple of 4 spaces
+    (pandoc uses 4 spaces/level in loose lists; conventional tight lists use 2):
+          1.  nested  →    1. nested   (4-space indent → 2-space indent)
+    """
+    # Halve leading indent when it is a multiple of 4
+    m = re.match(r'^( {4,})([-*+]|\d+[.)])\s', line)
+    if m:
+        indent_len = len(m.group(1))
+        if indent_len % 4 == 0:
+            line = ' ' * (indent_len // 2) + line[indent_len:]
+    # Reduce marker padding: -   → - ,  1.   → 1.
+    line = _LOOSE_BULLET.sub(r'\1\2 ', line)
+    line = _LOOSE_ORDERED.sub(r'\1\2 ', line)
+    return line
+
+
+def _collapse_loose_lists(md: str) -> str:
+    """
+    Convert pandoc-style loose Markdown lists to tight lists.
+
+    Pandoc emits loose lists (blank lines between items) when round-tripping
+    through DOCX.  This pass:
+      1. Removes blank lines that fall between two consecutive list items.
+      2. Normalises list-marker padding and nested-item indentation.
+
+    Only blank lines *between* list items are removed; blank lines that
+    separate a list from surrounding prose are preserved.
+
+    Example — pandoc output:
+        -   **Status**: Accepted
+
+        -   **Alternatives**:
+
+            1.  *Option A* — rejected
+
+            2.  *Option B* — accepted
+
+    Becomes:
+        - **Status**: Accepted
+        - **Alternatives**:
+          1. *Option A* — rejected
+          2. *Option B* — accepted
+    """
+    # ── Pass 1: drop blank lines between consecutive list items ───────────────
+    lines = md.split('\n')
+    out   = []
+    i     = 0
+    while i < len(lines):
+        if lines[i].strip() == '':
+            # Find the nearest previous non-blank line (already in out)
+            prev_nb = next((l for l in reversed(out) if l.strip()), '')
+            # Find the next non-blank line ahead
+            j = i + 1
+            while j < len(lines) and lines[j].strip() == '':
+                j += 1
+            next_nb = lines[j] if j < len(lines) else ''
+            # Drop the blank line only when both neighbours are list items
+            if _LIST_ITEM_RE.match(prev_nb) and _LIST_ITEM_RE.match(next_nb):
+                i += 1
+                continue
+        out.append(lines[i])
+        i += 1
+
+    # ── Pass 2: normalise markers and indentation on list-item lines ──────────
+    return '\n'.join(
+        _tighten_list_item(line) if _LIST_ITEM_RE.match(line) else line
+        for line in out
+    )
+
+
 def _clean_markdown(md: str, alt_to_path: dict | None = None) -> str:
     """Apply all post-pandoc cleanup passes."""
     md = _setext_to_atx(md)
@@ -506,6 +616,7 @@ def _clean_markdown(md: str, alt_to_path: dict | None = None) -> str:
     md = _strip_pandoc_image_attrs(md, alt_to_path=alt_to_path)
     md = _indented_to_fenced_code_blocks(md)
     md = _merge_consecutive_code_blocks(md)
+    md = _collapse_loose_lists(md)
     # Remove trailing whitespace on every line
     md = '\n'.join(line.rstrip() for line in md.splitlines())
     # Collapse 3+ consecutive blank lines to 2
@@ -517,19 +628,47 @@ def _clean_markdown(md: str, alt_to_path: dict | None = None) -> str:
 
 # ── Mermaid restoration ────────────────────────────────────────────────────────
 
-def restore_mermaid(md: str, doc_dir: Path) -> str:
+def restore_mermaid(md: str, doc_dir: Path, slug: str,
+                    no_mmdc: bool = False) -> str:
     """
-    Replace each ![Figure N](diagrams/HPDF_TDS_…_fig_NN.png) reference with
-    the original ```mermaid block from the matching .mmd sidecar file.
+    Replace each ``![Figure N](...)`` reference (whether pointing at a
+    pandoc-extracted ``media/`` path or the original ``diagrams/`` path)
+    with the appropriate content:
 
-    If the .mmd file does not exist (e.g. the figure is an engineer-authored
-    PNG, not a Mermaid diagram), the image reference is left unchanged.
+    Default (no_mmdc=False):
+        Re-insert the original ```mermaid … ``` fenced block sourced from the
+        sidecar file ``diagrams/mmdc-{slug}-{NN:02d}.mmd`` written by
+        tds_render.py.  If the sidecar is absent the reference is left as-is.
+
+    --nommdc (no_mmdc=True):
+        Replace the reference with a ``diagrams/`` PNG path so the diagram
+        stays as a static image.  If the PNG sidecar is absent a warning is
+        printed and the original (media/) reference is kept.
+
+    Any non-Figure image reference (engineer-authored PNGs etc.) is untouched
+    because _FIG_REF only matches ``![Figure N](...)``.
     """
     def _replace(m):
-        png_path_str = m.group(2)                   # e.g. diagrams/…_fig_01.png
-        mmd_path = (doc_dir / png_path_str).with_suffix('.mmd')
+        fig_num  = int(m.group(1))
+        base     = f"mmdc-{slug}-{fig_num:02d}"
+        mmd_path = doc_dir / 'diagrams' / f"{base}.mmd"
+        png_rel  = f"diagrams/{base}.png"
+        png_abs  = doc_dir / 'diagrams' / f"{base}.png"
+
+        if no_mmdc:
+            if png_abs.exists():
+                return f'![Figure {fig_num}]({png_rel})'
+            # Sidecar PNG missing — warn and keep whatever reference pandoc gave us
+            print(
+                f"  Warning: --nommdc set but sidecar PNG not found: {png_rel}\n"
+                f"           Leaving reference unchanged.",
+                file=sys.stderr,
+            )
+            return m.group(0)
+
         if not mmd_path.exists():
-            return m.group(0)                        # leave as-is
+            return m.group(0)   # no sidecar — leave reference unchanged
+
         source = mmd_path.read_text(encoding='utf-8').strip()
         return f'```mermaid\n{source}\n```'
 
@@ -576,12 +715,26 @@ def main():
         ),
     )
     parser.add_argument(
+        '--nommdc',
+        action='store_true',
+        default=False,
+        help=(
+            'Keep Mermaid diagrams as static PNG images in diagrams/ rather than '
+            'restoring the original ```mermaid fenced blocks.  Requires that the '
+            'diagrams/mmdc-<slug>-NN.png sidecars produced by tds_render are present.'
+        ),
+    )
+    # Deprecated alias kept for backward compatibility
+    parser.add_argument(
         '--no-mermaid-restore',
         action='store_true',
         default=False,
-        help='Skip Mermaid block restoration (leave diagram references as PNG images).',
+        help=argparse.SUPPRESS,   # hidden; use --nommdc instead
     )
     args = parser.parse_args()
+    # Merge deprecated flag into --nommdc
+    if args.no_mermaid_restore:
+        args.nommdc = True
 
     input_path = Path(args.input).resolve()
     if not input_path.exists():
@@ -593,6 +746,7 @@ def main():
         else input_path.with_suffix('.md')
     original_md = Path(args.original).resolve() if args.original \
         else input_path.with_suffix('.md')
+    slug        = slug_from_filename(input_path)
 
     # Don't clobber the original if output == original
     if output_path == original_md and original_md.exists():
@@ -605,6 +759,9 @@ def main():
     print(f"Input    : {input_path.name}")
     print(f"Output   : {output_path.name}")
     print(f"Original : {original_md.name if original_md.exists() else '(not found)'}")
+    print(f"Slug     : {slug}")
+    if args.nommdc:
+        print("Mode     : --nommdc (keep diagrams as static PNG references)")
 
     # ── Step 1: extract YAML frontmatter + alt→path image map ───────────────
     frontmatter = extract_frontmatter(original_md)
@@ -656,23 +813,35 @@ def main():
     # ── Step 4: clean up pandoc output ───────────────────────────────────────
     md = _clean_markdown(raw_md, alt_to_path=alt_to_path)
 
-    # ── Step 5: restore Mermaid blocks ───────────────────────────────────────
-    if not args.no_mermaid_restore:
-        before = md
-        md = restore_mermaid(md, doc_dir)
+    # ── Step 5: restore Mermaid blocks (or fix up PNG refs) ──────────────────
+    before = md
+    md = restore_mermaid(md, doc_dir, slug, no_mmdc=args.nommdc)
+
+    # Pandoc emits a blank paragraph after each embedded image ref, which
+    # leaves an extra blank line once the image ref is replaced by a fenced
+    # ```mermaid … ``` block.  Collapse any double blank line immediately
+    # following a closing fence (``` on its own line) to a single blank line.
+    md = re.sub(r'(?m)^```[ \t]*\n\n\n', '```\n\n', md)
+
+    if args.nommdc:
+        n_fixed = len(re.findall(r'!\[Figure \d+\]\(diagrams/', md)) - \
+                  len(re.findall(r'!\[Figure \d+\]\(diagrams/', before))
+        if n_fixed:
+            print(f"Mermaid figures kept as PNG: {n_fixed}")
+    else:
         n_restored = len(re.findall(r'```mermaid', md)) - \
                      len(re.findall(r'```mermaid', before))
         if n_restored:
             print(f"Mermaid blocks restored: {n_restored}")
-        else:
-            # Count remaining media/ references (no .mmd sidecar found)
-            n_refs = len(re.findall(r'!\[[^\]]*\]\(media/', md))
-            if n_refs:
-                print(
-                    f"Note: {n_refs} figure reference(s) left as embedded media "
-                    "(no matching .mmd sidecar found — review manually)",
-                    file=sys.stderr,
-                )
+
+    # Warn about any Figure N references still pointing at media/ (no sidecar)
+    n_unresolved = len(re.findall(r'!\[Figure \d+\]\(media/', md))
+    if n_unresolved:
+        print(
+            f"Note: {n_unresolved} figure reference(s) could not be resolved "
+            f"(no diagrams/mmdc-{slug}-NN sidecar found — render again or review manually)",
+            file=sys.stderr,
+        )
 
     # ── Step 6: prepend YAML frontmatter ─────────────────────────────────────
     if frontmatter:

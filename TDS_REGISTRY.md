@@ -5,8 +5,9 @@
 
 | Doc ID | Title | Owner | Component | Status | File |
 |---|---|---|---|---|---|
-| HPDF_TDS_0001 | Example Component: Lorem Ipsum Service | I. Baldin, JLab | Example | DRAFT | HPDF_TDS_0001_example.md |
+| HPDF_TDS_0001 | Example Component: Lorem Ipsum Service | I. Baldin | Example | DRAFT | HPDF_TDS_0001_example.md |
+| HPDF_TDS_0002 | Transfer Engine Design | I. Baldin | Data Transfer | DRAFT | HPDF_TDS_0002_transfer-engine-design.md |
 
 ---
 
-*Last updated: 2026-05-21*
+*Last updated: 2026-05-26*

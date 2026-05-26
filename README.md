@@ -22,11 +22,6 @@ Docker-compatible runtime. No other local tools required.
 
 Download the `tds` wrapper script and make it executable:
 
-```bash
-curl -fsSL https://raw.githubusercontent.com/ibaldin/tds/main/tds \
-  -o /usr/local/bin/tds && chmod +x /usr/local/bin/tds
-```
-
 > On macOS/Linux you may need `sudo` if `/usr/local/bin` is root-owned:
 > ```bash
 > sudo curl -fsSL https://raw.githubusercontent.com/ibaldin/tds/main/tds \
@@ -69,11 +64,12 @@ tds unrender --help
 
 Three diagram formats are supported in TDS source files:
 
-- **ASCII art** — use a ` ```text ` fenced block for simple inline sketches
-- **Mermaid** — use a ` ```mermaid ` block; the render pipeline converts it to
-  PNG automatically and saves a `.mmd` sidecar for round-trip recovery
+- **ASCII art** — use a ` ```text ` fenced block for simple inline sketches. You can use `--ascii-art-font-size` option with `tds render` to change how the ASCII art diagrams look in DocX. Default is 9 pts font. 
+- **Mermaid** — use a ` ```mermaid ` block; the render pipeline converts it to PNG automatically and saves a `.mmd` sidecar for round-trip recovery in `diagrams/`. By default the workflow substitues Mermaid diagrams with PNG files saved in `diagrams/` when you call `tds render` and attempts to reinsert ` ```mermaid ` blocks back based on the saved .mmd files in `diagrams/` when you call `tds unrender`. You can stop the conversion back to Mermaid by adding `--nommdc` to `tds unrender` command. 
 - **Engineer-authored PNG** — place in `diagrams/` and reference with
   `![Caption](diagrams/filename.png)`
+
+
 
 ## Updating
 

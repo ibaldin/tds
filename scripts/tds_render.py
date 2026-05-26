@@ -310,25 +310,29 @@ def main():
     blocks = find_mermaid_blocks(content)
     print(f"\nMermaid blocks found: {len(blocks)}")
 
-    generated_pngs = []   # track files created this run so we can delete them
-    replacements   = []   # (start, end, image_markdown) — applied in reverse
+    # Artifacts written this run.  Kept on success; cleaned up on any failure.
+    generated_artifacts = []
+    replacements        = []   # (start, end, image_markdown) — applied in reverse
 
     for i, (start, end, mmd_source) in enumerate(blocks, start=1):
-        fig_id   = f"fig_{i:02d}"
-        png_name = f"HPDF_TDS_{num_id}_{slug}_{fig_id}.png"
-        png_path = diagrams_dir / png_name
-        rel_ref  = f"diagrams/{png_name}"
+        base_name = f"mmdc-{slug}-{i:02d}"
+        mmd_path  = diagrams_dir / f"{base_name}.mmd"
+        png_path  = diagrams_dir / f"{base_name}.png"
+        rel_ref   = f"diagrams/{base_name}.png"
 
-        print(f"  [{fig_id}] Rendering → {rel_ref} ... ", end='', flush=True)
+        print(f"  [fig_{i:02d}] Rendering → {rel_ref} ... ", end='', flush=True)
         if not render_mermaid_block(mmd_source, png_path, mmdc):
             print("FAILED")
-            # Clean up any PNGs already generated before exiting
-            for p in generated_pngs:
+            # Clean up any artifacts already written before exiting
+            for p in generated_artifacts:
                 p.unlink(missing_ok=True)
             sys.exit(1)
+
+        # Persist Mermaid source as sidecar so tds_unconvert can restore blocks
+        mmd_path.write_text(mmd_source, encoding='utf-8')
         print("ok")
 
-        generated_pngs.append(png_path)
+        generated_artifacts.extend([png_path, mmd_path])
         replacements.append((start, end, f"![Figure {i}]({rel_ref})"))
 
     # ── Build render copy ─────────────────────────────────────────────────────
@@ -398,15 +402,17 @@ def main():
     result = subprocess.run(pandoc_cmd, capture_output=True, text=True)
 
     # ── Clean up temporary files ──────────────────────────────────────────────
-    # Always clean up, even on pandoc failure.
+    # The render copy is always temporary.
+    # generated_artifacts (PNGs + MMDs) are permanent sidecars — kept on success,
+    # cleaned up only if pandoc fails so we don't leave a partial set.
 
     tmp_render_path.unlink(missing_ok=True)
-    for png in generated_pngs:
-        png.unlink(missing_ok=True)
 
     if result.returncode != 0:
         print("FAILED")
         print(result.stderr.strip(), file=sys.stderr)
+        for p in generated_artifacts:
+            p.unlink(missing_ok=True)
         sys.exit(1)
 
     print("ok")

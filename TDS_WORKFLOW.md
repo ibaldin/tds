@@ -27,7 +27,7 @@ A lightweight note or ADR (Architecture Decision Record) embedded in an existing
 
 In simple terms, a TDS document should be limited in scope and gravitate towards small granular descriptions rather than a single large document describing multiple complex components of a larger system. A TDS may begin with a larger scope, but limited amount of detail, and then be superseded by smaller detailed TDSs that focus on subsets of functionality or subcomponents of a given portion of a system previously described by a single TDS. This may typically happen as the design is refined. 
 
-Relevant portions of the older TDS would be reflected in new multiple TDSs and the older ADRs distributed into the new documents according to scope of the new documents. A crosscheck should be performed to make sure previous ADRs are still respected in the updated design. If a conflict is identified and found to be deliberate, a new ADR can be created reflecting the new design decision, but it must reference the previous ADR 
+Relevant portions of the older TDS would be reflected in new multiple TDSs and the older ADRs distributed into the new documents according to scope of the new documents. A crosscheck should be performed to make sure previous ADRs are still respected in the updated design. If a conflict is identified and found to be deliberate, a new ADR can be created reflecting the new design decision, but it must reference the previous ADR. 
 
 A TDS is typically written with a help of an LLM, but must be understandable by a human. 
 
@@ -57,8 +57,8 @@ DRAFT ──► REVIEW ──► APPROVED
 
 **DRAFT → REVIEW**
 - All `[REQUIRED]` sections have material present (not necessarily complete)
-- All Mermaid diagrams render correctly
-- YAML frontmatter is complete (`reviewers` list populated)
+- All Mermaid diagrams render correctly (`tds render` succeeds without errors)
+- YAML frontmatter is complete (all required fields populated)
 
 **REVIEW → APPROVED**
 - Each named reviewer has confirmed approval (via comment in the DOCX in Google Drive, or explicit message)
@@ -94,8 +94,8 @@ Maintain a file `TDS_REGISTRY.md` in this workspace with one row per TDS:
 
 | Doc ID | Title | Owner | Component | Status | File |
 |---|---|---|---|---|---|
-| HPDF_TDS_0001 | IAM Federation Service | I. Baldin, JLab | IAM | DRAFT | HPDF_TDS_0001_iam-federation.md |
-| HPDF_TDS_0002 | Data Catalog API | J. Smith, LBNL | Data Catalog | REVIEW | HPDF_TDS_0002_data-catalog-api.md |
+| HPDF_TDS_0001 | IAM Federation Service | I. Baldin | IAM | DRAFT | HPDF_TDS_0001_iam-federation.md |
+| HPDF_TDS_0002 | Data Catalog API | J. Smith | Data Catalog | REVIEW | HPDF_TDS_0002_data-catalog-api.md |
 
 Assign the next available four-digit ID when a new TDS is created. The registry is the single source of truth for IDs — do not rely on file system ordering.
 
@@ -194,26 +194,19 @@ When working with Claude here:
 
 The Markdown file is the canonical source. DOCX is generated for distribution via Google Drive for reviewer comments.
 
-### 6.1 Pandoc command
+### 6.1 Rendering command
 
 ```bash
-python3 scripts/tds_render.py HPDF_TDS_NNNN_<slug>.md [--reference-doc hpdf-reference.docx]
+tds render HPDF_TDS_NNNN_<slug>.md
 ```
 
-Use `tds_render.py` rather than invoking pandoc directly — the script handles Mermaid pre-rendering, engineer image validation, and cleanup automatically. The underlying pandoc call it runs is:
+Use the `tds` wrapper rather than invoking scripts or pandoc directly — it runs inside the Docker container and handles Mermaid pre-rendering, `.mmd` sidecar creation, engineer image validation, cover page insertion, and pandoc automatically. See `tds render --help` for all options including `--no-cover` (quick review renders) and `--ascii-art-font-size`.
 
-```bash
-pandoc HPDF_TDS_NNNN_<slug>.md \
-  -o HPDF_TDS_NNNN_<slug>.docx \
-  --toc \
-  -f markdown+yaml_metadata_block \
-  [--reference-doc hpdf-reference.docx]
-```
+Key rendering behaviours controlled by YAML frontmatter:
+- `toc: true` — produces a table of contents.
+- `numbersections: false` (default) — set to `true` to add section numbers to the DOCX.
 
-- `hpdf-reference.docx` — a reference style document with HPDF heading styles, fonts, and page layout. Create this once and commit it alongside the TDS files.
-- `--toc` matches the `toc: true` frontmatter field and produces a table of contents.
-- Section numbering is **off by default** (`numbersections: false` in frontmatter). Set `numbersections: true` in a document's frontmatter to enable it for that document.
-- Diagrams must be in PNG form before running pandoc — see §6.2 for how each diagram format is handled.
+See §6.2 for how each diagram format is handled.
 
 ### 6.2 Diagram handling
 
@@ -233,25 +226,15 @@ Pandoc renders this as a monospace code block in the DOCX. It is always legible 
 
 #### Option B — Mermaid
 
-Write diagrams as ` ```mermaid ` fenced blocks in the Markdown source. Pandoc does not render Mermaid natively, so they must be pre-rendered to PNG before running pandoc.
+Write diagrams as ` ```mermaid ` fenced blocks in the Markdown source. The render pipeline handles everything automatically:
 
-**Pre-rendering with `mmdc`:**
+- `tds render` calls `mmdc` to render each block to a PNG and saves both the PNG and the Mermaid source as sidecars in `diagrams/`:
+  - `diagrams/mmdc-<slug>-01.png` — embedded in the DOCX
+  - `diagrams/mmdc-<slug>-01.mmd` — kept for round-trip recovery
+- `tds unrender` reads the `.mmd` sidecars and re-inserts the original ` ```mermaid ` blocks, so the Markdown source stays authoritative after a review cycle.
+- Pass `--nommdc` to `tds unrender` to keep diagrams as static PNG references instead of restoring fenced blocks.
 
-```bash
-# Install once:
-npm install -g @mermaid-js/mermaid-cli
-
-# Render each diagram:
-mmdc -i diagram.mmd -o diagram.png -t neutral
-```
-
-Then replace the fenced block with a standard image reference before running pandoc:
-
-```markdown
-![Caption](diagram.png)
-```
-
-Keep the original `.mmd` source files alongside the TDS — they are the editable source and must be updated whenever the diagram changes. When converting the DOCX back to Markdown (§6.4), restore the `.mmd` fenced block and remove the PNG reference so the Markdown source stays authoritative.
+No manual `mmdc` invocation or file management is required. Do not delete the `diagrams/mmdc-*` files — they are needed by `tds unrender`.
 
 #### Option C — Engineer-authored PNG
 
@@ -278,7 +261,15 @@ After rendering, upload the DOCX to the shared Google Drive folder and notify re
 
 ### 6.4 Transferring back to MD
 
-Once the comments have been addressed and the Google Doc text is consistent with reviewer expectations, the maintainer uses pandoc to convert the file back into MD format. Using Google Doc option File->Download->Md is acceptable assuming it produces satisfactory results preserving original formatting and diagrams. 
+Once comments have been addressed and the Google Doc is consistent with reviewer expectations, download the DOCX from Google Drive and run:
+
+```bash
+tds unrender HPDF_TDS_NNNN_<slug>.docx
+```
+
+This strips the cover page and TOC, restores Mermaid blocks from the `.mmd` sidecars in `diagrams/`, recovers YAML frontmatter from the original `.md`, and applies all round-trip cleanup passes. The output overwrites (after backing up) the original `.md` source file.
+
+Do **not** use Google Doc's File → Download → Markdown — it does not restore Mermaid blocks, YAML frontmatter, or HPDF-specific formatting.
 
 ---
 
@@ -324,17 +315,15 @@ When a component is retired, set status to `DEPRECATED`, add a final revision hi
 
 ### Starting a new TDS
 
-- [ ] Assign ID from `TDS_REGISTRY.md`
-- [ ] Copy `TDS_TEMPLATE.md` to `HPDF_TDS_NNNN_<slug>.md`
-- [ ] Fill in YAML frontmatter (status: DRAFT)
-- [ ] Add registry row
-- [ ] Begin drafting (with or without LLM agent assistance)
+- [ ] Run `tds new "<Title>" --owner "I. Baldin"` — assigns the next ID, creates the file from the template, and adds the registry row automatically
+- [ ] Fill in the content sections (with or without LLM agent assistance)
+- [ ] Verify YAML frontmatter (status should be DRAFT)
 
 ### Moving to REVIEW
 
 - [ ] All `[REQUIRED]` sections have material present (not necessarily complete)
-- [ ] Render DOCX and upload to Google Drive
-- [ ] Notify reviewers
+- [ ] Run `tds render <file.md>` — must succeed without errors (validates images and Mermaid blocks)
+- [ ] Upload DOCX to Google Drive and notify reviewers
 
 ### Moving to APPROVED
 
