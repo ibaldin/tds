@@ -18,6 +18,7 @@
 #
 # USAGE
 #   cd /path/to/your/tds/working/directory
+#   tds validate HPDF_TDS_0001_example.md
 #   tds render   HPDF_TDS_0001_example.md
 #   tds unrender HPDF_TDS_0001_example.docx
 
@@ -75,6 +76,46 @@ case "$COMMAND" in
         _ensure_image
         shift
         _run python3 /app/scripts/tds_new.py "$@"
+        ;;
+
+    validate)
+        # Validate a TDS Markdown file before rendering.
+        # Runs all registered checks (Mermaid syntax, image references, …) and
+        # exits 0 if everything passes, 1 if any check fails.
+        # Usage: tds validate <file.md> [--check mermaid,images]
+        #
+        # tds_validate.py is resolved in this order:
+        #   1. $TDS_SCRIPTS_DIR/tds_validate.py  (explicit env var override)
+        #   2. scripts/ sibling to this script    (source checkout, no image rebuild needed)
+        #   3. /app/scripts/tds_validate.py       (baked into the Docker image after rebuild)
+        _check_docker
+        _ensure_image
+        shift
+
+        _VALIDATE_SCRIPT=""
+        if [[ -n "${TDS_SCRIPTS_DIR:-}" && -f "$TDS_SCRIPTS_DIR/tds_validate.py" ]]; then
+            _VALIDATE_SCRIPT="$TDS_SCRIPTS_DIR/tds_validate.py"
+        else
+            _SIBLING_SCRIPT="$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd)/scripts/tds_validate.py"
+            if [[ -f "$_SIBLING_SCRIPT" ]]; then
+                _VALIDATE_SCRIPT="$_SIBLING_SCRIPT"
+            fi
+        fi
+
+        if [[ -n "$_VALIDATE_SCRIPT" ]]; then
+            # Mount only the single script file so we don't shadow the rest of /app/scripts
+            docker run --rm \
+                --user "$(id -u):$(id -g)" \
+                -e HOME=/tmp \
+                -v "$(pwd):/workspace" \
+                -v "$_VALIDATE_SCRIPT:/app/scripts/tds_validate.py:ro" \
+                -w /workspace \
+                "$IMAGE" \
+                python3 /app/scripts/tds_validate.py "$@"
+        else
+            # Fall back to the version baked into the image (after a rebuild)
+            _run python3 /app/scripts/tds_validate.py "$@"
+        fi
         ;;
 
     render)
@@ -159,6 +200,7 @@ tds — HPDF TDS document converter
 USAGE
   tds init                             Initialise current directory as a TDS repo
   tds new      <title>     [options]   Create a new TDS document from the template
+  tds validate <file.md>   [options]   Validate Mermaid blocks and image refs
   tds render   <file.md>   [options]   Convert Markdown → DOCX
   tds unrender <file.docx> [options]   Convert reviewed DOCX → Markdown
   tds pull                             Pull / update the Docker image
@@ -190,6 +232,12 @@ EXAMPLES
   # Override the ID or slug if needed:
   tds new "Auth Service" --id 0007 --slug "auth-service" --owner "J. Doe"
 
+  # Validate Mermaid blocks and image refs before rendering:
+  tds validate HPDF_TDS_0002_transfer-engine-design.md
+
+  # Run only the Mermaid check:
+  tds validate HPDF_TDS_0002_transfer-engine-design.md --check mermaid
+
   # Render and unrender:
   tds render HPDF_TDS_0002_transfer-engine-design.md
   tds unrender HPDF_TDS_0002_transfer-engine-design.docx
@@ -208,6 +256,11 @@ EXAMPLES
 CONFIGURATION
   Override the Docker image with the TDS_IMAGE environment variable:
     TDS_IMAGE=hpdf/tds-tools:1.0 tds render HPDF_TDS_0001_example.md
+
+  Point 'tds validate' at a local scripts directory (useful before rebuilding
+  the Docker image — tds_validate.py is injected into the container at runtime):
+    TDS_SCRIPTS_DIR=/path/to/tds/scripts tds validate HPDF_TDS_0001_example.md
+  When running tds from a source checkout, scripts/ is detected automatically.
 
 EOF
         ;;

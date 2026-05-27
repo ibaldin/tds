@@ -1,8 +1,8 @@
 # HPDF Technical Design Specification — Workflow Guide
 
-> **Version**: 1.0  
+> **Version**: 1.1  
 > **Maintained by**: HPDF Design Team  
-> **Last updated**: 2026-05-21
+> **Last updated**: 2026-05-26
 
 This document defines how HPDF Technical Design Specification (TDS) documents are created, developed, reviewed, approved, and maintained — by human engineers and by LLM-assisted agents.
 
@@ -57,7 +57,7 @@ DRAFT ──► REVIEW ──► APPROVED
 
 **DRAFT → REVIEW**
 - All `[REQUIRED]` sections have material present (not necessarily complete)
-- All Mermaid diagrams render correctly (`tds render` succeeds without errors)
+- `tds validate <file.md>` passes with no errors (Mermaid syntax and image references clean)
 - YAML frontmatter is complete (all required fields populated)
 
 **REVIEW → APPROVED**
@@ -175,6 +175,26 @@ Always specify the section number, not a description like "the security section"
 - Remove content from §10 (Revision History)
 - Invent requirements or constraints not present in the source material
 - Produce a DOCX directly — always produce Markdown first; the owner renders to DOCX
+- Declare a Mermaid diagram complete without running `tds validate` — see §5.6
+
+### 5.6 Mermaid diagram validation (required for all agents)
+
+Mermaid's grammar has lexer-level rules that are not obvious from prose or examples: certain punctuation characters (`;`) and Unicode symbols (`→`, `←`) are tokenized as operators and cannot appear in message labels or node text. LLMs reliably produce these errors.
+
+**After writing or editing any Mermaid block, agents must run:**
+
+```bash
+tds validate <file.md> --check mermaid
+```
+
+A diagram is not complete until this command exits 0 for that block. The validate-and-fix loop is mandatory, not optional:
+
+1. Write or edit the Mermaid block in the Markdown file.
+2. Run `tds validate <file.md> --check mermaid`.
+3. If any block reports `FAILED`, read the mmdc error, fix the offending line, and go back to step 2.
+4. Only proceed to the next section once all blocks report `ok`.
+
+Do not rely on `tds render` to surface diagram errors — render is slower and stops the pipeline. `tds validate` is fast and targeted.
 
 ### 5.5 Agent working in this Cowork project (Claude)
 
@@ -235,6 +255,16 @@ Write diagrams as ` ```mermaid ` fenced blocks in the Markdown source. The rende
 - Pass `--nommdc` to `tds unrender` to keep diagrams as static PNG references instead of restoring fenced blocks.
 
 No manual `mmdc` invocation or file management is required. Do not delete the `diagrams/mmdc-*` files — they are needed by `tds unrender`.
+
+**Always validate Mermaid blocks before rendering** (see §5.6 for the required loop and common error patterns):
+
+```bash
+tds validate <file.md> --check mermaid
+```
+
+Common mistakes that cause mmdc parse errors:
+- `;` in message labels — Mermaid treats it as a statement terminator; use `,` instead
+- `→` / `←` in message labels or node text — Mermaid tokenizes them as arrow operators; use `->` in graph diagrams or plain words (`to`, `from`) in sequence diagrams
 
 #### Option C — Engineer-authored PNG
 
@@ -318,11 +348,13 @@ When a component is retired, set status to `DEPRECATED`, add a final revision hi
 - [ ] Run `tds new "<Title>" --owner "I. Baldin"` — assigns the next ID, creates the file from the template, and adds the registry row automatically
 - [ ] Fill in the content sections (with or without LLM agent assistance)
 - [ ] Verify YAML frontmatter (status should be DRAFT)
+- [ ] After writing or editing any Mermaid diagram, run `tds validate <file.md> --check mermaid` and fix all errors before moving on (see §5.6)
 
 ### Moving to REVIEW
 
 - [ ] All `[REQUIRED]` sections have material present (not necessarily complete)
-- [ ] Run `tds render <file.md>` — must succeed without errors (validates images and Mermaid blocks)
+- [ ] Run `tds validate <file.md>` — must pass with no errors (Mermaid syntax and image references)
+- [ ] Run `tds render <file.md>` — must succeed without errors
 - [ ] Upload DOCX to Google Drive and notify reviewers
 
 ### Moving to APPROVED
