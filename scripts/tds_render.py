@@ -35,6 +35,7 @@ try:
     from tds_cover import (
         prepend_cover as _prepend_cover,
         add_table_borders as _add_table_borders,
+        strip_bookmarks as _strip_bookmarks,
     )
     _COVER_AVAILABLE = True
 except ImportError as _e:
@@ -268,7 +269,8 @@ def main():
             sys.exit(1)
         else:
             print(
-                "Warning: python-docx not available — table borders will be skipped.",
+                "Warning: python-docx not available — table borders and bookmark "
+                "stripping will be skipped.",
                 file=sys.stderr,
             )
 
@@ -455,8 +457,8 @@ def main():
             print(f"\nError: cover page generation failed: {exc}", file=sys.stderr)
             raise
 
-    # ── Post-process: table borders ───────────────────────────────────────────
-    # Runs regardless of --no-cover as long as python-docx is available.
+    # ── Post-process: table borders and bookmark stripping ────────────────────
+    # Both steps run regardless of --no-cover as long as python-docx is available.
 
     if _COVER_AVAILABLE:
         print("Adding table borders    ... ", end='', flush=True)
@@ -465,6 +467,14 @@ def main():
             print("ok")
         except Exception as exc:
             print(f"\nError: table border processing failed: {exc}", file=sys.stderr)
+            raise
+
+        print("Stripping bookmarks     ... ", end='', flush=True)
+        try:
+            _strip_bookmarks(output_path)
+            print("ok")
+        except Exception as exc:
+            print(f"\nError: bookmark stripping failed: {exc}", file=sys.stderr)
             raise
 
     print(f"\nDone → {output_path}")
