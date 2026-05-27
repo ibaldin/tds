@@ -283,30 +283,6 @@ def add_table_borders(docx_path: Path) -> None:
     doc.save(str(docx_path))
 
 
-def strip_bookmarks(docx_path: Path) -> None:
-    """
-    Post-process *docx_path* in-place to remove all w:bookmarkStart and
-    w:bookmarkEnd elements from the document body.
-
-    Pandoc emits these as anchor targets for TOC hyperlinks and any
-    Markdown cross-references.  Microsoft Word does not display them
-    visually, but Google Docs renders a bookmark-flag icon for each one,
-    cluttering the document view.  Stripping them cleans up Google Docs;
-    the TOC field still renders and can be updated in Word, though
-    ctrl+click-to-section navigation will no longer function.
-    """
-    doc  = Document(str(docx_path))
-    body = doc.element.body
-
-    for tag_name in ('w:bookmarkStart', 'w:bookmarkEnd'):
-        for elem in body.findall('.//' + qn(tag_name)):
-            parent = elem.getparent()
-            if parent is not None:
-                parent.remove(elem)
-
-    doc.save(str(docx_path))
-
-
 def prepend_cover(docx_path: Path, doc_id: str, slug: str,
                   last_updated: str, logo_path: Path) -> None:
     """
