@@ -147,7 +147,7 @@ case "$COMMAND" in
         # Initialise the current directory as a TDS working repository.
         # Does NOT require Docker — uses only curl and standard shell tools.
         REPO_ROOT="https://raw.githubusercontent.com/ibaldin/tds/main"
-        INIT_FILES=("TDS_REGISTRY.md" "TDS_TEMPLATE.md" "TDS_WORKFLOW.md")
+        INIT_FILES=("TDS_REGISTRY.md" "TDS_TEMPLATE.md" "TDS_WORKFLOW.md" "HPDF_TDS_0001_example.md")
 
         echo "This will initialise the following directory as a TDS repository:"
         echo ""
