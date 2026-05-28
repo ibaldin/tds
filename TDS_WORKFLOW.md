@@ -134,14 +134,14 @@ An agent **may not** change document status (DRAFT → REVIEW → APPROVED). Onl
 
 When starting a new TDS with an LLM agent, provide:
 
-1. **The template**: point the agent to `TDS_TEMPLATE.md`
+1. **The template**: Owner uses `tds new` command to generate a new skeleton TDS from template. An agent with direct access to the system may offer the owner to do so on their behalf.
 2. **Component context**: a short description of what the component does and where it fits in HPDF
 3. **Source material**: relevant chat logs, meeting notes, prior documents, external specs
 4. **Scope instruction**: which sections to fill in now vs. leave as placeholders
 
 **Example prompt skeleton:**
 ```
-Using TDS_TEMPLATE.md as the template, draft a TDS for the [component name].
+Use the newly created HPDF_TDS_000X_<slug>.md to help me draft a TDS for the [component name].
 
 Context:
 - This component is responsible for [what it does]
@@ -151,7 +151,7 @@ Context:
 Source material: [attach or paste relevant notes]
 
 Fill in sections 1–4. Leave §6 (Open Questions), §7 (Decision Records), and §8 (Related Documents)
-as placeholders — I will fill those in. Assign doc_id HPDF_TDS_XXXX for now.
+as placeholders — I will fill those in. 
 ```
 
 ### 5.3 Prompting pattern for targeted updates
@@ -170,11 +170,12 @@ Always specify the section number, not a description like "the security section"
 
 ### 5.4 What agents must not do
 
+- Create a new TDS themselves from the template - the new TDS must always be created by owner using `tds new`
 - Resolve open questions in §6 by simply deleting them — unresolved questions must either be incorporated inline into the relevant section or remain in §6 with a clear explanation of why they are deferred
 - Change the `status` field in frontmatter
 - Remove content from §10 (Revision History)
 - Invent requirements or constraints not present in the source material
-- Produce a DOCX directly — always produce Markdown first; the owner renders to DOCX
+- Produce a DOCX directly — always produce Markdown first; the owner renders to DOCX using `tds render`
 - Declare a Mermaid diagram complete without running `tds validate` — see §5.6
 
 ### 5.6 Mermaid diagram validation (required for all agents)
