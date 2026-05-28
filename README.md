@@ -3,6 +3,8 @@
 Command-line tools for rendering and round-tripping HPDF Technical Design
 Specification documents between Markdown and DOCX.
 
+For details of the workflow and its philosophy, look at [TDS_WORKFLOW.md](TDS_WORKFLOW.md). This is also the file you should let your agent read and follow when working with TDSs.
+
 ## What it does
 
 | Command | What happens |
