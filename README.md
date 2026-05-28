@@ -89,6 +89,12 @@ Three diagram formats are supported in TDS source files:
   `![Caption](diagrams/filename.png)`
 
 
+## Building the Docker
+
+Something like:
+```bash
+$ docker buildx build -t ibaldin/tds:$(cat VERSION.txt) -t ibaldin/tds:latest --platform linux/amd64 -f Dockerfile --push .
+```
 
 ## Updating
 
