@@ -9,7 +9,7 @@ contributors:                      # List of contributors
   - "J. Smith"
   - "A. Doe"
 created: "2026-05-21"
-last_updated: "2026-05-21"
+last_updated: "2026-05-27"
 
 # ─── Pandoc rendering hints ───────────────────────────────────────────────────
 # Render to DOCX (use scripts/tds_render.py — it handles Mermaid pre-rendering):
@@ -30,7 +30,7 @@ numbersections: false   # set to true to add pandoc section numbers to the DOCX
 | **Status** | DRAFT |
 | **Owner** | I. Baldin |
 | **Created** | 2026-05-21 |
-| **Last Updated** | 2026-05-21 |
+| **Last Updated** | 2026-05-27 |
 
 ---
 
@@ -233,7 +233,21 @@ Quis autem vel eum iure reprehenderit qui in ea voluptate velit esse. The primar
 
 ---
 
-## 6. Open Questions [OPTIONAL]
+## 6. UX Considerations [OPTIONAL]
+
+The Lorem Ipsum Service surfaces three distinct interfaces, each targeting a different user population within the HPDF community.
+
+**Scientific end-users** (Spoke sites) interact exclusively with the stable REST API endpoint. Their primary workflow is submitting a `GET /data/{identifier}` request and receiving either a redirect to a presigned storage URL or a proxied data stream. The interface is intentionally narrow — one endpoint, one verb — to minimise the learning curve for scientists who are not expected to understand Hub topology. Error responses follow RFC 9457 (Problem Details for HTTP APIs), ensuring that `status`, `title`, `detail`, and a trace-id are always present, making errors self-explanatory and directly actionable without reference to Hub internals.
+
+**Spoke site administrators** interact with the service through deployment configuration files and monitoring dashboards. Configuration is expressed in environment variables with human-readable names and inline documentation; a `--check-config` dry-run flag validates all required variables before container start. The Hub exposes a `/health` and `/metrics` endpoint for integration with site-local monitoring stacks (Prometheus-compatible). Alerting thresholds and their rationale are documented in §5.3; operators should not need to read source code to understand what each metric means.
+
+**Hub operators** (JLab / LBNL staff) manage certificate rotation, secrets lifecycle, and scaling. These tasks are performed via Hub-internal tooling and are not exposed through the service's own interface. Credential rotation is documented as a runbook in the Hub operations wiki; a link to that runbook should be kept current in the deployment README.
+
+No web UI is provided by this component. All surfaces are CLI or API-driven; no WCAG accessibility assessment is required for this version.
+
+---
+
+## 7. Open Questions [OPTIONAL]
 
 | # | Question | Owner | Target date | Notes |
 |---|---|---|---|---|
@@ -242,7 +256,7 @@ Quis autem vel eum iure reprehenderit qui in ea voluptate velit esse. The primar
 
 ---
 
-## 7. Decision Records [OPTIONAL]
+## 8. Decision Records [OPTIONAL]
 
 ### DR-01: Stateless broker over stateful cache
 
@@ -263,7 +277,7 @@ Quis autem vel eum iure reprehenderit qui in ea voluptate velit esse. The primar
 
 ---
 
-## 8. Related Documents [REQUIRED]
+## 9. Related Documents [REQUIRED]
 
 | Doc ID | Title | Relationship |
 |---|---|---|
@@ -273,7 +287,7 @@ Quis autem vel eum iure reprehenderit qui in ea voluptate velit esse. The primar
 
 ---
 
-## 9. Testing and Acceptance Criteria [OPTIONAL]
+## 10. Testing and Acceptance Criteria [OPTIONAL]
 
 <!-- This section illustrates an engineer-authored PNG diagram (Option C).
      The source diagram was created in draw.io and exported as PNG.
@@ -294,8 +308,9 @@ The diagram below illustrates the test environment topology:
 
 ---
 
-## 10. Revision History
+## 11. Revision History
 
 | Version | Date | Author | Status | Summary of changes |
 |---|---|---|---|---|
 | 0.1 | 2026-05-21 | I. Baldin | DRAFT | Initial draft — lorem ipsum example document |
+| 0.2 | 2026-05-27 | I. Baldin | DRAFT | Added §6 UX Considerations; renumbered §7–§11 |

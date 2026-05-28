@@ -26,8 +26,8 @@ numbersections: false   # set to true to add pandoc section numbers to the DOCX
      • Fill in the YAML frontmatter above first — it drives document tracking.
      • Sections marked [REQUIRED] must have material present before status → REVIEW.
      • Sections marked [OPTIONAL] may be omitted only if genuinely not applicable.
-     • Move resolved open questions from §6 to Decision Records (§7).
-     • §6 Open Questions must be empty before status → APPROVED.
+     • Move resolved open questions from §7 to Decision Records (§8).
+     • §7 Open Questions must be empty before status → APPROVED.
      • Diagrams: three options are supported — see TDS_WORKFLOW.md §6.2 for full guidance.
        - Option A: ASCII art (```text fenced block) — simple flows only.
        - Option B: Mermaid (```mermaid block) — renders in GitHub/GitLab; tds render
@@ -173,10 +173,37 @@ graph TD
 
 ---
 
-## 6. Open Questions [OPTIONAL]
+## 6. UX Considerations [OPTIONAL]
+
+<!-- Address usability and user-facing concerns for this component. Even
+     infrastructure components have "users" — operators, Spoke site
+     administrators, and scientific end-users each interact with different
+     surfaces and have different mental models. Consider covering, as applicable:
+
+     • Target users: who interacts with this component and in what roles?
+       Distinguish between personas (e.g., Hub admin vs. Spoke admin vs. scientist).
+     • User workflows: what tasks does each persona perform, and in what sequence?
+       Highlight where errors are likely and how the system helps recovery.
+     • Interface surfaces: Web UI, CLI, REST API, configuration files, dashboards,
+       log output? For each surface, note the expected level of expertise.
+     • Error messaging: are errors actionable, self-explanatory, and scoped to the
+       likely cause? Avoid exposing internal identifiers in user-facing messages.
+     • Accessibility: any web-facing surface must meet WCAG 2.1 AA. Note compliance
+       status or open gaps here.
+     • Discoverability: how do users learn this component exists, what it does, and
+       how to use it? Reference relevant documentation or onboarding flows.
+     • Operator ergonomics: installation experience, first-run behaviour, routine
+       administrative tasks (e.g., credential rotation, log inspection, scaling).
+
+     If the component has no direct user-facing surface (e.g., an internal Hub
+     daemon), mark this section with a one-sentence justification and omit
+     the sub-sections. -->
+---
+
+## 7. Open Questions [OPTIONAL]
 
 <!-- Use this table to track unresolved questions. Each should have an owner
-     and a target resolution date. Move resolved questions to §7 (as a DR)
+     and a target resolution date. Move resolved questions to §8 (as a DR)
      or inline into the relevant section, then remove the row here. -->
 
 | # | Question | Owner | Target date | Notes |
@@ -185,7 +212,7 @@ graph TD
 
 ---
 
-## 7. Decision Records [OPTIONAL]
+## 8. Decision Records [OPTIONAL]
 
 <!-- Add one subsection per significant design decision — one where a reasonable
      engineer might have chosen differently. Resolved open questions from §6 land here. -->
@@ -199,7 +226,7 @@ graph TD
 
 ---
 
-## 8. Related Documents [REQUIRED]
+## 9. Related Documents [REQUIRED]
 
 | Doc ID | Title | Relationship |
 |---|---|---|
@@ -207,7 +234,7 @@ graph TD
 
 ---
 
-## 9. Testing and Acceptance Criteria [OPTIONAL]
+## 10. Testing and Acceptance Criteria [OPTIONAL]
 
 <!-- How will the design be validated? Include integration testing approach,
      acceptance criteria mapped to requirements, and any performance benchmarks. -->
@@ -218,7 +245,7 @@ graph TD
 
 ---
 
-## 10. Revision History
+## 11. Revision History
 
 | Version | Date | Author | Status | Summary of changes |
 |---|---|---|---|---|

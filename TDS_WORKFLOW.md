@@ -62,7 +62,7 @@ DRAFT ──► REVIEW ──► APPROVED
 
 **REVIEW → APPROVED**
 - Each named reviewer has confirmed approval (via comment in the DOCX in Google Drive, or explicit message)
-- All open questions in §6 are resolved and incorporated inline
+- All open questions in §7 are resolved and incorporated inline
 - Revision history updated with approval entry
 
 **APPROVED → SUPERSEDED**
@@ -108,7 +108,7 @@ Each TDS has exactly one **owner**. The owner is:
 - The engineer responsible for the correctness and completeness of the document
 - The person who drives the document from DRAFT to APPROVED
 - The long-term maintainer: they update the TDS when the design changes
-- Accountable for closing open questions in §6
+- Accountable for closing open questions in §7
 
 There is no co-ownership. Contributors and reviewers are listed separately in the frontmatter. If ownership must transfer, update the frontmatter and log the change in §10 (Revision History).
 
@@ -150,7 +150,7 @@ Context:
 
 Source material: [attach or paste relevant notes]
 
-Fill in sections 1–4. Leave §6 (Open Questions), §7 (Decision Records), and §8 (Related Documents)
+Fill in sections 1–4. Leave §7 (Open Questions), §8 (Decision Records), and §9 (Related Documents)
 as placeholders — I will fill those in. 
 ```
 
@@ -163,7 +163,7 @@ Update HPDF_TDS_NNNN_<slug>.md as follows:
 - Section [X.Y]: [precise description of the change]
 - Reason: [why this change is being made]
 - Do NOT modify any other sections.
-- Add a row to §10 (Revision History): version [N+1], date today, author [name], summary [one line].
+- Add a row to §11 (Revision History): version [N+1], date today, author [name], summary [one line].
 ```
 
 Always specify the section number, not a description like "the security section", to avoid ambiguity.
@@ -361,7 +361,7 @@ When a component is retired, set status to `DEPRECATED`, add a final revision hi
 ### Moving to APPROVED
 
 - [ ] Team approved the transition
-- [ ] §6 is empty (all questions resolved)
+- [ ] §7 is empty (all questions resolved)
 - [ ] frontmatter `status` changed to `APPROVED`
 - [ ] TDS Registry updated
 - [ ] Final DOCX rendered and uploaded to Google Drive
