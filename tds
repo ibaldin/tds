@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # tds — HPDF TDS document converter
 #
-# Wraps tds_render.py and tds_unconvert.py inside a Docker container,
+# Wraps tds_render.py and tds_unconvert.py inside a Docker-compatible container,
 # volume-mounting the current directory so all relative file paths
 # (diagrams/, .mmd sidecars, referenced PNGs) work exactly as they do
 # when running the scripts locally.
@@ -13,7 +13,7 @@
 #     chmod +x tds && ./tds help
 #
 # REQUIREMENTS
-#   Docker Desktop, Colima, or any Docker-compatible runtime.
+#   Docker Desktop, Colima, Podman, or any Docker-compatible runtime.
 #   No other local dependencies needed — everything else is in the image.
 #
 # USAGE
@@ -26,26 +26,108 @@ set -euo pipefail
 
 IMAGE="${TDS_IMAGE:-ibaldin/tds:latest}"
 COMMAND="${1:-help}"
+CONTAINER_RUNTIME="${TDS_CONTAINER_RUNTIME:-}"
+PLATFORM="${TDS_PLATFORM:-}"
+_PLATFORM_ARGS=()
 
 # ── Helpers ────────────────────────────────────────────────────────────────────
 
-_check_docker() {
-    if ! command -v docker &>/dev/null; then
-        echo "Error: Docker is not installed or not on PATH." >&2
-        echo "Install Docker Desktop: https://www.docker.com/products/docker-desktop/" >&2
+_resolve_container_runtime() {
+    if [[ -n "$CONTAINER_RUNTIME" ]]; then
+        if command -v "$CONTAINER_RUNTIME" &>/dev/null; then
+            return
+        fi
+
+        echo "Error: container runtime '$CONTAINER_RUNTIME' is not on PATH." >&2
+        echo "Set TDS_CONTAINER_RUNTIME to docker or podman, or install a compatible runtime." >&2
         exit 1
     fi
-    if ! docker info &>/dev/null 2>&1; then
-        echo "Error: Docker daemon is not running." >&2
-        echo "Start Docker Desktop (or Colima) and try again." >&2
+
+    if command -v docker &>/dev/null; then
+        CONTAINER_RUNTIME="docker"
+    elif command -v podman &>/dev/null; then
+        CONTAINER_RUNTIME="podman"
+    else
+        echo "Error: neither Docker nor Podman was found on PATH." >&2
+        echo "Install Docker Desktop, Colima, or Podman, or set TDS_CONTAINER_RUNTIME." >&2
         exit 1
     fi
 }
 
+_normalize_image_for_runtime() {
+    if [[ -z "${TDS_IMAGE:-}" && "${CONTAINER_RUNTIME##*/}" == "podman" && "$IMAGE" == "ibaldin/tds:"* ]]; then
+        IMAGE="docker.io/$IMAGE"
+    fi
+}
+
+_resolve_platform() {
+    local arch=""
+
+    if [[ -n "$PLATFORM" ]]; then
+        _PLATFORM_ARGS=(--platform "$PLATFORM")
+        return
+    fi
+
+    arch="$("$CONTAINER_RUNTIME" info --format '{{.Architecture}}' 2>/dev/null || true)"
+    if [[ -z "$arch" ]]; then
+        arch="$(uname -m)"
+    fi
+
+    case "$arch" in
+        amd64|x86_64)
+            PLATFORM="linux/amd64"
+            ;;
+        arm64|aarch64)
+            PLATFORM="linux/arm64"
+            ;;
+        *)
+            PLATFORM=""
+            ;;
+    esac
+
+    if [[ -n "$PLATFORM" ]]; then
+        _PLATFORM_ARGS=(--platform "$PLATFORM")
+    fi
+}
+
+_platform_arch() {
+    case "$PLATFORM" in
+        linux/amd64) echo "amd64" ;;
+        linux/arm64) echo "arm64" ;;
+        *) echo "" ;;
+    esac
+}
+
+_check_container_runtime() {
+    _resolve_container_runtime
+    _normalize_image_for_runtime
+
+    if ! "$CONTAINER_RUNTIME" info &>/dev/null 2>&1; then
+        echo "Error: $CONTAINER_RUNTIME is installed but is not running or usable." >&2
+        if [[ "${CONTAINER_RUNTIME##*/}" == "podman" ]]; then
+            echo "Start the Podman machine or service and try again." >&2
+        else
+            echo "Start Docker Desktop (or Colima) and try again." >&2
+        fi
+        exit 1
+    fi
+
+    _resolve_platform
+}
+
 _ensure_image() {
-    if ! docker image inspect "$IMAGE" &>/dev/null 2>&1; then
+    local wanted_arch local_arch
+
+    wanted_arch="$(_platform_arch)"
+    local_arch="$("$CONTAINER_RUNTIME" image inspect --format '{{.Architecture}}' "$IMAGE" 2>/dev/null || true)"
+
+    if [[ -z "$local_arch" ]]; then
         echo "Image '$IMAGE' not found locally — pulling from Docker Hub ..."
-        docker pull "$IMAGE"
+        "$CONTAINER_RUNTIME" pull "${_PLATFORM_ARGS[@]}" "$IMAGE"
+    elif [[ -n "$wanted_arch" && "$local_arch" != "$wanted_arch" ]]; then
+        echo "Local image '$IMAGE' is linux/$local_arch, but this runtime needs $PLATFORM."
+        echo "Pulling a matching image from Docker Hub ..."
+        "$CONTAINER_RUNTIME" pull "${_PLATFORM_ARGS[@]}" "$IMAGE"
     fi
 }
 
@@ -55,7 +137,8 @@ _run() {
     # -e HOME=/tmp   : give Chromium/Puppeteer a writable home dir inside the container
     # -v $(pwd):/workspace : mount the current directory as the working directory
     # -w /workspace  : set container CWD to the mount point
-    docker run --rm \
+    "$CONTAINER_RUNTIME" run --rm \
+        "${_PLATFORM_ARGS[@]}" \
         --user "$(id -u):$(id -g)" \
         -e HOME=/tmp \
         -v "$(pwd):/workspace" \
@@ -72,7 +155,7 @@ case "$COMMAND" in
         # Create a new TDS document from the template and register it.
         # Usage: tds new <title> [--owner <name>] [--component <name>]
         #                        [--id <NNNN>] [--slug <slug>]
-        _check_docker
+        _check_container_runtime
         _ensure_image
         shift
         _run python3 /app/scripts/tds_new.py "$@"
@@ -87,8 +170,8 @@ case "$COMMAND" in
         # tds_validate.py is resolved in this order:
         #   1. $TDS_SCRIPTS_DIR/tds_validate.py  (explicit env var override)
         #   2. scripts/ sibling to this script    (source checkout, no image rebuild needed)
-        #   3. /app/scripts/tds_validate.py       (baked into the Docker image after rebuild)
-        _check_docker
+        #   3. /app/scripts/tds_validate.py       (baked into the container image after rebuild)
+        _check_container_runtime
         _ensure_image
         shift
 
@@ -104,7 +187,8 @@ case "$COMMAND" in
 
         if [[ -n "$_VALIDATE_SCRIPT" ]]; then
             # Mount only the single script file so we don't shadow the rest of /app/scripts
-            docker run --rm \
+            "$CONTAINER_RUNTIME" run --rm \
+                "${_PLATFORM_ARGS[@]}" \
                 --user "$(id -u):$(id -g)" \
                 -e HOME=/tmp \
                 -v "$(pwd):/workspace" \
@@ -121,7 +205,7 @@ case "$COMMAND" in
     render)
         # Convert a TDS Markdown file to a styled DOCX with cover page.
         # All options are passed through to tds_render.py.
-        _check_docker
+        _check_container_runtime
         _ensure_image
         shift
         _run python3 /app/scripts/tds_render.py "$@"
@@ -131,21 +215,21 @@ case "$COMMAND" in
         # Convert a reviewed DOCX back to Markdown, restoring Mermaid blocks
         # and YAML frontmatter from the original .md in the same directory.
         # All options are passed through to tds_unconvert.py.
-        _check_docker
+        _check_container_runtime
         _ensure_image
         shift
         _run python3 /app/scripts/tds_unconvert.py "$@"
         ;;
 
     pull)
-        # Pull (or update) the Docker image from Docker Hub.
-        _check_docker
-        docker pull --platform linux/amd64 "$IMAGE"
+        # Pull (or update) the container image from Docker Hub.
+        _check_container_runtime
+        "$CONTAINER_RUNTIME" pull "${_PLATFORM_ARGS[@]}" "$IMAGE"
         ;;
 
     init)
         # Initialise the current directory as a TDS working repository.
-        # Does NOT require Docker — uses only curl and standard shell tools.
+        # Does NOT require a container runtime; uses only curl and standard shell tools.
         REPO_ROOT="https://raw.githubusercontent.com/ibaldin/tds/main"
         INIT_FILES=("TDS_REGISTRY.md" "TDS_TEMPLATE.md" "TDS_WORKFLOW.md" "HPDF_TDS_0001_example.md" "diagrams/HPDF_TDS_0001_example-diagram.png")
 
@@ -188,7 +272,7 @@ case "$COMMAND" in
 
         echo ""
         echo "Repository ready. Suggested next steps:"
-        echo "  1. tds pull                                       # download the Docker image"
+        echo "  1. tds pull                                       # download the container image"
         echo "  2. tds new \"My Component\" --owner \"Name, Site\"    # create your first TDS"
         echo "  3. tds render <generated-file.md>                 # render to DOCX when ready"
         ;;
@@ -203,19 +287,19 @@ USAGE
   tds validate <file.md>   [options]   Validate Mermaid blocks and image refs
   tds render   <file.md>   [options]   Convert Markdown → DOCX
   tds unrender <file.docx> [options]   Convert reviewed DOCX → Markdown
-  tds pull                             Pull / update the Docker image
+  tds pull                             Pull / update the container image
   tds help                             Show this message
 
 GETTING STARTED
   mkdir my-tds && cd my-tds
   tds init          # downloads templates and creates diagrams/
-  tds pull          # pulls the Docker image (one-time)
+  tds pull          # pulls the container image (one-time)
   tds new "My Component Design" --owner "J. Doe" --component "Storage"
 
 REQUIREMENTS
-  Docker Desktop, Colima, or any Docker-compatible runtime.
+  Docker Desktop, Colima, Podman, or any Docker-compatible runtime.
   Run `tds pull` once to download the image before first use.
-  `tds init` only requires curl — no Docker needed.
+  `tds init` only requires curl — no container runtime needed.
 
 HOW IT WORKS
   Run tds from your TDS working directory. The current directory is
@@ -254,11 +338,17 @@ EXAMPLES
   tds unrender --help
 
 CONFIGURATION
-  Override the Docker image with the TDS_IMAGE environment variable:
+  Override the container image with the TDS_IMAGE environment variable:
     TDS_IMAGE=hpdf/tds-tools:1.0 tds render HPDF_TDS_0001_example.md
 
+  Override the container runtime with TDS_CONTAINER_RUNTIME:
+    TDS_CONTAINER_RUNTIME=podman tds pull
+
+  Override the container platform with TDS_PLATFORM:
+    TDS_PLATFORM=linux/arm64 tds pull
+
   Point 'tds validate' at a local scripts directory (useful before rebuilding
-  the Docker image — tds_validate.py is injected into the container at runtime):
+  the container image — tds_validate.py is injected into the container at runtime):
     TDS_SCRIPTS_DIR=/path/to/tds/scripts tds validate HPDF_TDS_0001_example.md
   When running tds from a source checkout, scripts/ is detected automatically.
 

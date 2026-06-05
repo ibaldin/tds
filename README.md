@@ -12,13 +12,16 @@ For details of the workflow and its philosophy, look at [TDS_WORKFLOW.md](TDS_WO
 | `tds render <file.md>` | Renders a TDS Markdown source to a styled DOCX with cover page, DOE disclaimer, TOC, and Mermaid diagrams |
 | `tds unrender <file.docx>` | Converts a reviewed DOCX back to Markdown, restoring Mermaid blocks and YAML frontmatter |
 
-All conversion logic runs inside a Docker container — pandoc, Mermaid CLI, and
-python-docx are bundled in the image. The only local dependency is Docker.
+All conversion logic runs inside a Docker-compatible container image — pandoc,
+Mermaid CLI, and python-docx are bundled in the image. The only local
+dependency is Docker, Podman, or another compatible runtime.
 
 ## Prerequisites
 
-Docker Desktop, [Colima](https://github.com/abiosoft/colima), or any
-Docker-compatible runtime. No other local tools required.
+Docker Desktop, [Colima](https://github.com/abiosoft/colima), Podman, or any
+Docker-compatible runtime. No other local tools required. If both Docker and
+Podman are installed, `tds` uses Docker by default; set
+`TDS_CONTAINER_RUNTIME=podman` to force Podman.
 
 ## Installation
 
@@ -36,11 +39,15 @@ Download the `tds` wrapper script and make it executable:
 >   -o ~/bin/tds && chmod +x ~/bin/tds
 > ```
 
-Then pull the Docker image (one-time, also to update to latest):
+Then pull the container image (one-time, also to update to latest):
 
 ```bash
 tds pull
 ```
+
+On Apple Silicon or other ARM64 systems, use a multi-architecture image. If
+you see Chromium fail with an SSE3 error, your local image is likely the old
+`linux/amd64` build; run `tds pull` after updating the wrapper and image.
 
 ## Usage
 
@@ -89,16 +96,16 @@ Three diagram formats are supported in TDS source files:
   `![Caption](diagrams/filename.png)`
 
 
-## Building the Docker
+## Building the image
 
 Something like:
 ```bash
-$ docker buildx build -t ibaldin/tds:$(cat VERSION.txt) -t ibaldin/tds:latest --platform linux/amd64 -f Dockerfile --push .
+$ docker buildx build -t ibaldin/tds:$(cat VERSION.txt) -t ibaldin/tds:latest --platform linux/amd64,linux/arm64 -f Dockerfile --push .
 ```
 
 ## Updating
 
-To pull the latest image:
+To pull the latest container image:
 
 ```bash
 tds pull
@@ -114,4 +121,16 @@ To pin to a specific version, set the `TDS_IMAGE` environment variable:
 
 ```bash
 TDS_IMAGE=ibaldin/tds:1.0 tds render HPDF_TDS_0001_example.md
+```
+
+To force a specific container runtime, set `TDS_CONTAINER_RUNTIME`:
+
+```bash
+TDS_CONTAINER_RUNTIME=podman tds pull
+```
+
+To force a specific container platform, set `TDS_PLATFORM`:
+
+```bash
+TDS_PLATFORM=linux/arm64 tds pull
 ```
