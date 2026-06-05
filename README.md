@@ -12,13 +12,16 @@ For details of the workflow and its philosophy, look at [TDS_WORKFLOW.md](TDS_WO
 | `tds render <file.md>` | Renders a TDS Markdown source to a styled DOCX with cover page, DOE disclaimer, TOC, and Mermaid diagrams |
 | `tds unrender <file.docx>` | Converts a reviewed DOCX back to Markdown, restoring Mermaid blocks and YAML frontmatter |
 
-All conversion logic runs inside a Docker container — pandoc, Mermaid CLI, and
-python-docx are bundled in the image. The only local dependency is Docker.
+All conversion logic runs inside a Docker-compatible container image — pandoc,
+Mermaid CLI, and python-docx are bundled in the image. The only local
+dependency is Docker, Podman, or another compatible runtime.
 
 ## Prerequisites
 
-Docker Desktop, [Colima](https://github.com/abiosoft/colima), or any
-Docker-compatible runtime. No other local tools required.
+Docker Desktop, [Colima](https://github.com/abiosoft/colima), Podman, or any
+Docker-compatible runtime. No other local tools required. If both Docker and
+Podman are installed, `tds` uses Docker by default; set
+`TDS_CONTAINER_RUNTIME=podman` to force Podman.
 
 ## Installation
 
@@ -36,7 +39,7 @@ Download the `tds` wrapper script and make it executable:
 >   -o ~/bin/tds && chmod +x ~/bin/tds
 > ```
 
-Then pull the Docker image (one-time, also to update to latest):
+Then pull the container image (one-time, also to update to latest):
 
 ```bash
 tds pull
@@ -89,7 +92,7 @@ Three diagram formats are supported in TDS source files:
   `![Caption](diagrams/filename.png)`
 
 
-## Building the Docker
+## Building the image
 
 Something like:
 ```bash
@@ -98,7 +101,7 @@ $ docker buildx build -t ibaldin/tds:$(cat VERSION.txt) -t ibaldin/tds:latest --
 
 ## Updating
 
-To pull the latest image:
+To pull the latest container image:
 
 ```bash
 tds pull
@@ -114,4 +117,10 @@ To pin to a specific version, set the `TDS_IMAGE` environment variable:
 
 ```bash
 TDS_IMAGE=ibaldin/tds:1.0 tds render HPDF_TDS_0001_example.md
+```
+
+To force a specific container runtime, set `TDS_CONTAINER_RUNTIME`:
+
+```bash
+TDS_CONTAINER_RUNTIME=podman tds pull
 ```
