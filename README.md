@@ -45,6 +45,10 @@ Then pull the container image (one-time, also to update to latest):
 tds pull
 ```
 
+On Apple Silicon or other ARM64 systems, use a multi-architecture image. If
+you see Chromium fail with an SSE3 error, your local image is likely the old
+`linux/amd64` build; run `tds pull` after updating the wrapper and image.
+
 ## Usage
 
 Run `tds` from your TDS working directory. The current directory is
@@ -96,7 +100,7 @@ Three diagram formats are supported in TDS source files:
 
 Something like:
 ```bash
-$ docker buildx build -t ibaldin/tds:$(cat VERSION.txt) -t ibaldin/tds:latest --platform linux/amd64 -f Dockerfile --push .
+$ docker buildx build -t ibaldin/tds:$(cat VERSION.txt) -t ibaldin/tds:latest --platform linux/amd64,linux/arm64 -f Dockerfile --push .
 ```
 
 ## Updating
@@ -123,4 +127,10 @@ To force a specific container runtime, set `TDS_CONTAINER_RUNTIME`:
 
 ```bash
 TDS_CONTAINER_RUNTIME=podman tds pull
+```
+
+To force a specific container platform, set `TDS_PLATFORM`:
+
+```bash
+TDS_PLATFORM=linux/arm64 tds pull
 ```

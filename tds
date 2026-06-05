@@ -27,6 +27,8 @@ set -euo pipefail
 IMAGE="${TDS_IMAGE:-ibaldin/tds:latest}"
 COMMAND="${1:-help}"
 CONTAINER_RUNTIME="${TDS_CONTAINER_RUNTIME:-}"
+PLATFORM="${TDS_PLATFORM:-}"
+_PLATFORM_ARGS=()
 
 # ── Helpers ────────────────────────────────────────────────────────────────────
 
@@ -58,6 +60,44 @@ _normalize_image_for_runtime() {
     fi
 }
 
+_resolve_platform() {
+    local arch=""
+
+    if [[ -n "$PLATFORM" ]]; then
+        _PLATFORM_ARGS=(--platform "$PLATFORM")
+        return
+    fi
+
+    arch="$("$CONTAINER_RUNTIME" info --format '{{.Architecture}}' 2>/dev/null || true)"
+    if [[ -z "$arch" ]]; then
+        arch="$(uname -m)"
+    fi
+
+    case "$arch" in
+        amd64|x86_64)
+            PLATFORM="linux/amd64"
+            ;;
+        arm64|aarch64)
+            PLATFORM="linux/arm64"
+            ;;
+        *)
+            PLATFORM=""
+            ;;
+    esac
+
+    if [[ -n "$PLATFORM" ]]; then
+        _PLATFORM_ARGS=(--platform "$PLATFORM")
+    fi
+}
+
+_platform_arch() {
+    case "$PLATFORM" in
+        linux/amd64) echo "amd64" ;;
+        linux/arm64) echo "arm64" ;;
+        *) echo "" ;;
+    esac
+}
+
 _check_container_runtime() {
     _resolve_container_runtime
     _normalize_image_for_runtime
@@ -71,12 +111,23 @@ _check_container_runtime() {
         fi
         exit 1
     fi
+
+    _resolve_platform
 }
 
 _ensure_image() {
-    if ! "$CONTAINER_RUNTIME" image inspect "$IMAGE" &>/dev/null 2>&1; then
+    local wanted_arch local_arch
+
+    wanted_arch="$(_platform_arch)"
+    local_arch="$("$CONTAINER_RUNTIME" image inspect --format '{{.Architecture}}' "$IMAGE" 2>/dev/null || true)"
+
+    if [[ -z "$local_arch" ]]; then
         echo "Image '$IMAGE' not found locally — pulling from Docker Hub ..."
-        "$CONTAINER_RUNTIME" pull "$IMAGE"
+        "$CONTAINER_RUNTIME" pull "${_PLATFORM_ARGS[@]}" "$IMAGE"
+    elif [[ -n "$wanted_arch" && "$local_arch" != "$wanted_arch" ]]; then
+        echo "Local image '$IMAGE' is linux/$local_arch, but this runtime needs $PLATFORM."
+        echo "Pulling a matching image from Docker Hub ..."
+        "$CONTAINER_RUNTIME" pull "${_PLATFORM_ARGS[@]}" "$IMAGE"
     fi
 }
 
@@ -87,6 +138,7 @@ _run() {
     # -v $(pwd):/workspace : mount the current directory as the working directory
     # -w /workspace  : set container CWD to the mount point
     "$CONTAINER_RUNTIME" run --rm \
+        "${_PLATFORM_ARGS[@]}" \
         --user "$(id -u):$(id -g)" \
         -e HOME=/tmp \
         -v "$(pwd):/workspace" \
@@ -136,6 +188,7 @@ case "$COMMAND" in
         if [[ -n "$_VALIDATE_SCRIPT" ]]; then
             # Mount only the single script file so we don't shadow the rest of /app/scripts
             "$CONTAINER_RUNTIME" run --rm \
+                "${_PLATFORM_ARGS[@]}" \
                 --user "$(id -u):$(id -g)" \
                 -e HOME=/tmp \
                 -v "$(pwd):/workspace" \
@@ -171,7 +224,7 @@ case "$COMMAND" in
     pull)
         # Pull (or update) the container image from Docker Hub.
         _check_container_runtime
-        "$CONTAINER_RUNTIME" pull --platform linux/amd64 "$IMAGE"
+        "$CONTAINER_RUNTIME" pull "${_PLATFORM_ARGS[@]}" "$IMAGE"
         ;;
 
     init)
@@ -290,6 +343,9 @@ CONFIGURATION
 
   Override the container runtime with TDS_CONTAINER_RUNTIME:
     TDS_CONTAINER_RUNTIME=podman tds pull
+
+  Override the container platform with TDS_PLATFORM:
+    TDS_PLATFORM=linux/arm64 tds pull
 
   Point 'tds validate' at a local scripts directory (useful before rebuilding
   the container image — tds_validate.py is injected into the container at runtime):
