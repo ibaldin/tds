@@ -87,6 +87,16 @@ Three diagram formats are supported in TDS source files:
 - **Mermaid** — use a ` ```mermaid ` block; the render pipeline converts it to PNG automatically and saves a `.mmd` sidecar for round-trip recovery in `diagrams/`. By default the workflow substitues Mermaid diagrams with PNG files saved in `diagrams/` when you call `tds render` and attempts to reinsert ` ```mermaid ` blocks back based on the saved .mmd files in `diagrams/` when you call `tds unrender`. You can stop the conversion back to Mermaid by adding `--nommdc` to `tds unrender` command. 
 - **Engineer-authored PNG** — place in `diagrams/` and reference with
   `![Caption](diagrams/filename.png)`
+- **draw.io (diagrams.net) XML** — one effective way to produce engineer-authored
+  PNGs is to have the AI assistant generate [draw.io](https://www.drawio.com/)
+  XML for the diagram, then refine it either online at
+  [app.diagrams.net](https://app.diagrams.net/) or locally with the
+  [draw.io VSCode extension](https://marketplace.visualstudio.com/items?itemName=hediet.vscode-drawio).
+  Keep the `.drawio` XML in `diagrams/` so it can be version controlled alongside
+  the TDS source, export a PNG from it, and reference the PNG with
+  `![Caption](diagrams/filename.png)` per the standard PNG workflow above. This
+  gives you editable, diffable diagram sources in git while still embedding the
+  rendered PNG in the DOCX.
 
 
 ## Building the Docker

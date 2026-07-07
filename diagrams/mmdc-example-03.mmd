@@ -1,0 +1,21 @@
+graph LR
+    subgraph JLab ["JLab Hub"]
+        LB_J["Load Balancer"]
+        B1["Broker replica 1"]
+        B2["Broker replica 2"]
+        LB_J --> B1
+        LB_J --> B2
+    end
+    subgraph LBNL ["LBNL Hub"]
+        LB_L["Load Balancer"]
+        B3["Broker replica 1"]
+        B4["Broker replica 2"]
+        LB_L --> B3
+        LB_L --> B4
+    end
+    DNS["DNS Failover"]
+    DNS -->|"primary"| LB_J
+    DNS -->|"failover (TTL 30s)"| LB_L
+    ALCF["ALCF Spoke"] -->|"ESnet"| DNS
+    OLCF["OLCF Spoke"] -->|"ESnet"| DNS
+    NERSC["NERSC Spoke"] -->|"ESnet"| DNS

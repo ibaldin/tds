@@ -1,0 +1,22 @@
+sequenceDiagram
+    participant C as Spoke Client
+    participant B as Request Broker
+    participant R as Catalog Resolver
+    participant S as Storage Redirector
+
+    C->>B: GET /data/{identifier} (Bearer token)
+    B->>B: Validate OIDC token
+    B->>R: resolve(identifier)
+    R->>R: Check local cache (TTL 60s)
+    alt Cache hit
+        R-->>B: storage_location
+    else Cache miss
+        R->>R: Catalog API call
+        R-->>B: storage_location (cached)
+    end
+    B->>S: redirect_or_proxy(storage_location, client_caps)
+    alt Client supports redirects
+        S-->>C: 307 Redirect → presigned storage URL
+    else Proxy mode
+        S-->>C: 200 data stream
+    end

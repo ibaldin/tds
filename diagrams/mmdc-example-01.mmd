@@ -1,0 +1,16 @@
+graph TD
+    subgraph Hub ["Hub (JLab / LBNL)"]
+        LIS["Lorem Ipsum Service"]
+        CAT["Data Catalog"]
+        STR["Storage Backend"]
+        LIS -->|"resolve identifier"| CAT
+        LIS -->|"fetch / redirect"| STR
+    end
+    subgraph SpokeA ["Spoke Site A"]
+        CLA["Client A"]
+    end
+    subgraph SpokeB ["Spoke Site B"]
+        CLB["Client B"]
+    end
+    CLA -->|"ESnet"| LIS
+    CLB -->|"ESnet"| LIS
